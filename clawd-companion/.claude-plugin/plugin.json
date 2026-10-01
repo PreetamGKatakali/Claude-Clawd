@@ -1,0 +1,83 @@
+{
+  "name": "clawd-companion",
+  "displayName": "Clawd Companion",
+  "version": "0.1.6",
+  "description": "An animated mascot that reacts to Claude Code in a small local window and in the status line. Local only.",
+  "author": { "name": "clawd-companion" },
+  "license": "MIT",
+  "keywords": ["statusline", "companion", "mascot", "local"],
+  "userConfig": {
+    "display_name": {
+      "type": "string",
+      "title": "Your name",
+      "description": "What Clawd calls you in the welcome and the water reminder. Leave empty to use the name setup asked for, or none.",
+      "default": ""
+    },
+    "hydration_interval_minutes": {
+      "type": "number",
+      "title": "Hydration interval (minutes)",
+      "description": "Minutes between hydration reminders, measured from the end of the last one.",
+      "default": 45,
+      "min": 1,
+      "max": 1440
+    },
+    "hydration_display_seconds": {
+      "type": "number",
+      "title": "Hydration display (seconds)",
+      "description": "How long each hydration reminder stays on screen.",
+      "default": 20,
+      "min": 3,
+      "max": 300
+    },
+    "confirm_ttl_minutes": {
+      "type": "number",
+      "title": "Confirmation timeout (minutes)",
+      "description": "Fallback: drop the attention state if nothing clears it within this long.",
+      "default": 10,
+      "min": 1,
+      "max": 120
+    },
+    "session_idle_timeout_minutes": {
+      "type": "number",
+      "title": "Session idle timeout (minutes)",
+      "description": "Forget a session that has not sent an event for this long.",
+      "default": 30,
+      "min": 1,
+      "max": 1440
+    },
+    "status_style": {
+      "type": "string",
+      "title": "Status line style",
+      "description": "sprite draws a small two-row pixel Clawd, text prints one plain line, off prints nothing.",
+      "options": ["sprite", "text", "off"],
+      "default": "sprite"
+    },
+    "window_mode": {
+      "type": "string",
+      "title": "Companion window mode",
+      "description": "tab opens your default browser, app tries a Chromium app-style window and falls back to tab.",
+      "options": ["tab", "app"],
+      "default": "tab"
+    },
+    "auto_open": {
+      "type": "boolean",
+      "title": "Open the window automatically",
+      "description": "Start the server and open the companion window when a session starts.",
+      "default": false
+    },
+    "port": {
+      "type": "number",
+      "title": "Companion port",
+      "description": "Preferred port on 127.0.0.1. If busy, the next free port is used.",
+      "default": 4756,
+      "min": 1024,
+      "max": 65535
+    },
+    "sound_enabled": {
+      "type": "boolean",
+      "title": "Allow sound and notifications",
+      "description": "Show the Enable sound button in the window. Still requires a click and browser permission.",
+      "default": false
+    }
+  }
+}

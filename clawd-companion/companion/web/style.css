@@ -1,0 +1,367 @@
+/* clawd-companion. Local only: no font CDN, no external requests of any kind.
+   Geist and Geist Mono are bundled from vercel/geist-font under the SIL Open
+   Font License 1.1, which permits redistribution with software. The licence
+   text ships beside the files at fonts/LICENSE.txt. They are served from this
+   page's own loopback origin, never from a CDN, and the system stack below
+   still covers the case where a font file is missing. */
+
+@font-face {
+  font-family: "Geist";
+  src: url("./fonts/Geist-Variable.woff2") format("woff2-variations"),
+       url("./fonts/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("./fonts/GeistMono-Variable.woff2") format("woff2-variations"),
+       url("./fonts/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", monospace;
+
+  --bg: #faf9f6;
+  --card: #ffffff;
+  --fg1: #1e1b4b;
+  --fg2: rgba(30, 27, 75, 0.72);
+  --line: rgba(30, 27, 75, 0.1);
+  --line2: rgba(30, 27, 75, 0.28);
+  --tint: #f4ecff;
+  --accent: #6b3dc9;
+  --purple: #8b5cf6;
+  --gold: #fbcf4f;
+  --gold-deep: #d9a514;
+  --indigo: #818cf8;
+  --green: #16a34a;
+  --grey: #a8a8ae;
+  --shadow: 0 18px 40px rgba(10, 10, 11, 0.12);
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-io: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur: 300ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0a0a0b;
+    --card: #151516;
+    --fg1: #ffffff;
+    --fg2: rgba(255, 255, 255, 0.7);
+    --line: rgba(255, 255, 255, 0.1);
+    --line2: rgba(255, 255, 255, 0.3);
+    --tint: #2d1640;
+    --accent: #b794f6;
+    --shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg1);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.mono { font-family: var(--font-mono); }
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.accent { color: var(--accent); }
+
+/* --- the card ------------------------------------------------------------ */
+
+.card {
+  width: 320px;
+  height: 460px;
+  border-radius: 24px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  color: var(--fg1);
+}
+
+.card-head {
+  height: 46px;
+  flex: none;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1.5px solid var(--line2);
+  border-radius: 999px;
+  padding: 3px 11px 3px 9px;
+}
+
+.pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--grey);
+  transition: background var(--dur) var(--ease);
+}
+
+.stage { position: relative; height: 270px; flex: none; }
+
+.clawd-wrap { position: absolute; left: 60px; top: 56px; width: 200px; height: 200px; }
+.clawd-wrap svg { display: block; overflow: visible; color: var(--fg1); }
+
+.caption { height: 100px; flex: none; padding: 6px 22px 0; }
+.caption .eyebrow { margin-bottom: 8px; }
+
+.headline {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.sub { font-size: 13px; line-height: 1.5; color: var(--fg2); margin-top: 4px; }
+
+.card-foot {
+  height: 44px;
+  flex: none;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--fg2);
+}
+
+.sound-btn {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: none;
+  border: 1.5px solid var(--line2);
+  border-radius: 999px;
+  padding: 4px 12px;
+  cursor: pointer;
+  min-height: 24px;
+}
+.sound-btn:hover { border-color: var(--purple); }
+.sound-btn[hidden] { display: none; }
+
+/* --- thought bubble (HTML over the SVG) ---------------------------------- */
+
+.bubble {
+  position: absolute;
+  left: 18px;
+  top: 12px;
+  width: 236px;
+  height: 76px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: var(--tint);
+  border: 1.5px solid var(--purple);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+  pointer-events: none;
+}
+
+.bubble-top { display: flex; align-items: center; justify-content: space-between; }
+.tdots { display: flex; gap: 4px; }
+.tdots span {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--purple);
+  animation: tdot 1.4s var(--ease-io) infinite;
+}
+.tdots span:nth-child(2) { animation-delay: 0.2s; }
+.tdots span:nth-child(3) { animation-delay: 0.4s; }
+
+.bubble-lines { position: relative; height: 36px; margin-top: 8px; }
+.tline {
+  position: absolute;
+  left: 0; top: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--fg1);
+  opacity: 0;
+  transition: opacity 400ms var(--ease);
+}
+.tline.on { opacity: 1; }
+
+.tail {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--tint);
+  border: 1.5px solid var(--purple);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+  pointer-events: none;
+}
+.tail-1 { left: 156px; top: 94px;  width: 10px; height: 10px; }
+.tail-2 { left: 166px; top: 105px; width: 7px;  height: 7px; }
+.tail-3 { left: 172px; top: 114px; width: 5px;  height: 5px; }
+
+/* --- confirm rings and badge glyph --------------------------------------- */
+
+.ring {
+  position: absolute;
+  left: 60px; top: 56px; width: 200px; height: 200px;
+  border-radius: 50%;
+  border: 2px solid var(--purple);
+  opacity: 0;
+  pointer-events: none;
+}
+.ring-2 { animation-delay: 1.3s; }
+
+.badge-glyph {
+  position: absolute;
+  left: 87px; top: 93px;
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 600; color: var(--fg1);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+  pointer-events: none;
+}
+@media (prefers-color-scheme: dark) { .badge-glyph { color: #1e1b4b; } }
+
+/* --- parts that only appear in one state --------------------------------- */
+
+#glass, #drops, #sparkle, #check-badge, #badge, .eye-happy { opacity: 0; }
+#eye-left, #eye-right { opacity: 1; }
+
+/* --- per state ------------------------------------------------------------ */
+
+#clawd-breathe {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: breathe 3.6s var(--ease-io) infinite;
+}
+
+.card[data-state="idle"] .pill-dot { background: var(--grey); }
+.card[data-state="idle"] #eye-left,
+.card[data-state="idle"] #eye-right {
+  transform-box: fill-box; transform-origin: 50% 50%;
+  animation: blink 5s ease-in-out infinite;
+}
+.card[data-state="idle"] #eye-right { animation-delay: 0.04s; }
+
+.card[data-state="thinking"] .pill-dot { background: var(--purple); animation: dotpulse 1.6s var(--ease-io) infinite; }
+.card[data-state="thinking"] #clawd {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: sway 3.2s var(--ease-io) infinite;
+}
+.card[data-state="thinking"] #eyes { transform: translate(-5px, -7px); }
+.card[data-state="thinking"] .bubble { opacity: 1; transform: translateY(0); }
+.card[data-state="thinking"] .tail { opacity: 1; }
+
+.card[data-state="confirm"] .pill-dot { background: var(--gold-deep); animation: dotpulse 1.6s var(--ease-io) infinite; }
+.card[data-state="confirm"] #arm-right {
+  transform-box: fill-box; transform-origin: 0% 50%;
+  animation: wave 1.6s var(--ease-io) infinite;
+}
+/* Hello on a fresh session: the same wave, a little quicker. */
+.card[data-state="idle"].welcome #arm-right {
+  transform-box: fill-box; transform-origin: 0% 50%;
+  animation: wave 1.2s var(--ease-io) infinite;
+}
+.card[data-state="confirm"] #badge {
+  opacity: 1;
+  transform-box: fill-box; transform-origin: 50% 50%;
+  animation: badge 1.8s var(--ease-io) infinite;
+}
+.card[data-state="confirm"] .badge-glyph { opacity: 1; animation: badge 1.8s var(--ease-io) infinite; }
+.card[data-state="confirm"] .ring { animation: ring 2.6s var(--ease) infinite; }
+
+.card[data-state="hydrate"] .pill-dot { background: var(--indigo); }
+.card[data-state="hydrate"] #glass {
+  opacity: 1;
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: sip 4.4s var(--ease-io) infinite;
+}
+.card[data-state="hydrate"] #water { animation: drink 4.4s var(--ease-io) infinite; }
+.card[data-state="hydrate"] #drops { opacity: 1; }
+.card[data-state="hydrate"] #drops > g > path { animation: fall 2.6s var(--ease) infinite; opacity: 0; }
+.card[data-state="hydrate"] #drops > g:nth-child(2) > path { animation-delay: 0.9s; }
+.card[data-state="hydrate"] #drops > g:nth-child(3) > path { animation-delay: 1.6s; }
+.card[data-state="hydrate"] .eye-happy { opacity: 1; }
+.card[data-state="hydrate"] #eye-left,
+.card[data-state="hydrate"] #eye-right { opacity: 0; }
+
+.card[data-state="done"] .pill-dot { background: var(--green); }
+.card[data-state="done"] #clawd {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: hop 2.4s var(--ease) infinite;
+}
+.card[data-state="done"] #clawd-shadow {
+  transform-box: fill-box; transform-origin: 50% 50%;
+  animation: hopshadow 2.4s var(--ease) infinite;
+}
+.card[data-state="done"] #check-badge { opacity: 1; }
+.card[data-state="done"] #sparkle {
+  opacity: 1;
+  transform-box: fill-box; transform-origin: 50% 50%;
+  animation: twinkle 2.2s var(--ease-io) infinite;
+}
+.card[data-state="done"] .eye-happy { opacity: 1; }
+.card[data-state="done"] #eye-left,
+.card[data-state="done"] #eye-right { opacity: 0; }
+
+/* --- keyframes ------------------------------------------------------------ */
+
+@keyframes breathe   { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.02, 1.04); } }
+@keyframes sway      { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+@keyframes hop       { 0%, 55%, 100% { transform: translateY(0); } 30% { transform: translateY(-12px); } }
+@keyframes hopshadow { 0%, 55%, 100% { transform: scale(1); } 30% { transform: scale(0.82); } }
+@keyframes blink     { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(0.08); } }
+@keyframes wave      { 0%, 100% { transform: rotate(0deg); } 25%, 75% { transform: rotate(-34deg); } 50% { transform: rotate(-12deg); } }
+@keyframes badge     { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.14); } }
+@keyframes sip       { 0%, 15%, 100% { transform: rotate(0deg); } 40%, 60% { transform: rotate(-18deg); } }
+@keyframes drink     { 0%, 15%, 100% { transform: translateY(0); } 40%, 60% { transform: translateY(16px); } }
+@keyframes fall      { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(46px); opacity: 0; } }
+@keyframes twinkle   { 0%, 100% { transform: scale(0.55); opacity: 0.5; } 50% { transform: scale(1.1); opacity: 1; } }
+@keyframes ring      { 0% { transform: scale(0.85); opacity: 0.5; } 100% { transform: scale(1.15); opacity: 0; } }
+@keyframes dotpulse  { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes tdot      { 0%, 70%, 100% { transform: translateY(0); opacity: 0.35; } 35% { transform: translateY(-4px); opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .tline.on { opacity: 1; }
+}

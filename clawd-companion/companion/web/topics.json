@@ -1,0 +1,291 @@
+{
+  "version": 1,
+  "order": [
+    "debugging",
+    "refactor",
+    "tests",
+    "explain",
+    "git",
+    "deploy",
+    "security",
+    "docs",
+    "performance",
+    "ui",
+    "data",
+    "big_task",
+    "default"
+  ],
+  "topics": {
+    "debugging": {
+      "label": "Debugging",
+      "keywords": [
+        "fix",
+        "bug",
+        "error",
+        "broken",
+        "break",
+        "breaks",
+        "fail",
+        "failing",
+        "crash",
+        "traceback",
+        "stack trace",
+        "exception",
+        "regression",
+        "debug"
+      ],
+      "lines": [
+        "Where does this break.",
+        "Tracing the failing path.",
+        "Reproduce it first.",
+        "The error knows something."
+      ]
+    },
+    "refactor": {
+      "label": "Refactor",
+      "keywords": [
+        "refactor",
+        "clean up",
+        "cleanup",
+        "rename",
+        "extract",
+        "simplify",
+        "tidy",
+        "restructure",
+        "dedupe",
+        "reorganize"
+      ],
+      "lines": [
+        "Same behavior. Cleaner shape.",
+        "Smaller pieces. Clearer names.",
+        "Nothing new. Just clearer."
+      ]
+    },
+    "tests": {
+      "label": "Tests",
+      "keywords": [
+        "test",
+        "tests",
+        "spec",
+        "coverage",
+        "assert",
+        "pytest",
+        "jest",
+        "vitest",
+        "unit test",
+        "mock",
+        "fixture"
+      ],
+      "lines": [
+        "What could go wrong here.",
+        "Cover the edges first.",
+        "A failing test is progress."
+      ]
+    },
+    "explain": {
+      "label": "Explain",
+      "keywords": [
+        "explain",
+        "why",
+        "how does",
+        "what does",
+        "understand",
+        "walk me through",
+        "read the",
+        "summarize",
+        "what is"
+      ],
+      "lines": [
+        "Let me trace this through.",
+        "Following the call path.",
+        "Start at the entry point."
+      ]
+    },
+    "git": {
+      "label": "Git",
+      "keywords": [
+        "commit",
+        "branch",
+        "merge",
+        "rebase",
+        "pull request",
+        "stash",
+        "checkout",
+        "cherry-pick",
+        "git"
+      ],
+      "lines": [
+        "Small commits. Clear story.",
+        "Reading the diff.",
+        "History should explain itself."
+      ]
+    },
+    "deploy": {
+      "label": "Deploy",
+      "keywords": [
+        "deploy",
+        "build",
+        "ci",
+        "pipeline",
+        "release",
+        "docker",
+        "kubernetes",
+        "helm",
+        "publish",
+        "ship",
+        "rollout"
+      ],
+      "lines": [
+        "Checking the pipeline.",
+        "Build first. Ship second.",
+        "Green before go."
+      ]
+    },
+    "security": {
+      "label": "Security",
+      "keywords": [
+        "auth",
+        "token",
+        "secret",
+        "password",
+        "credential",
+        "vulnerability",
+        "injection",
+        "xss",
+        "csrf",
+        "encrypt",
+        "permission",
+        "sanitize"
+      ],
+      "lines": [
+        "Who could abuse this.",
+        "Least privilege. Always.",
+        "Secrets stay out of the repo."
+      ]
+    },
+    "docs": {
+      "label": "Docs",
+      "keywords": [
+        "document",
+        "documentation",
+        "readme",
+        "docstring",
+        "changelog",
+        "comment",
+        "guide",
+        "tutorial"
+      ],
+      "lines": [
+        "Write it for next week.",
+        "Plain words beat clever ones.",
+        "The reader knows nothing yet."
+      ]
+    },
+    "performance": {
+      "label": "Performance",
+      "keywords": [
+        "performance",
+        "slow",
+        "optimize",
+        "optimise",
+        "latency",
+        "memory",
+        "profile",
+        "bottleneck",
+        "cache",
+        "faster",
+        "throughput"
+      ],
+      "lines": [
+        "Measure before changing.",
+        "Find the real bottleneck.",
+        "Fast enough is a number."
+      ]
+    },
+    "ui": {
+      "label": "UI",
+      "keywords": [
+        "ui",
+        "ux",
+        "css",
+        "style",
+        "layout",
+        "design",
+        "component",
+        "button",
+        "responsive",
+        "animation",
+        "color",
+        "spacing",
+        "font"
+      ],
+      "lines": [
+        "Spacing does the work.",
+        "Fewer elements. More clarity.",
+        "Check it at phone width."
+      ]
+    },
+    "data": {
+      "label": "Data",
+      "keywords": [
+        "sql",
+        "query",
+        "database",
+        "schema",
+        "migration",
+        "table",
+        "index",
+        "postgres",
+        "mysql",
+        "mongo",
+        "join",
+        "dataset"
+      ],
+      "lines": [
+        "Shape the query first.",
+        "Indexes earn their keep.",
+        "Check the row count."
+      ]
+    },
+    "big_task": {
+      "label": "Big task",
+      "keywords": [],
+      "lines": [
+        "Big one. Plan first.",
+        "Breaking this into steps.",
+        "One piece at a time."
+      ]
+    },
+    "default": {
+      "label": "Working",
+      "keywords": [],
+      "lines": [
+        "Reading the request.",
+        "Getting my bearings.",
+        "Let me look around."
+      ]
+    }
+  },
+  "hydration": [
+    {
+      "headline": "Drink some water.",
+      "sub": "One glass. Then back to it."
+    },
+    {
+      "headline": "Time for a glass.",
+      "sub": "Your code will wait."
+    },
+    {
+      "headline": "Water break.",
+      "sub": "Stand up while you are at it."
+    },
+    {
+      "headline": "Hydrate.",
+      "sub": "Small habit. Real difference."
+    },
+    {
+      "headline": "Refill the glass.",
+      "sub": "Then pick up where you left off."
+    }
+  ]
+}

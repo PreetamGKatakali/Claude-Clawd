@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Clawd</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<main class="card" id="card" data-state="idle">
+  <header class="card-head">
+    <div class="eyebrow">Clawd</div>
+    <div class="pill">
+      <span class="pill-dot" id="pill-dot"></span>
+      <span class="eyebrow" id="pill-label">Idle</span>
+    </div>
+  </header>
+
+  <div class="stage">
+    <div class="ring"></div>
+    <div class="ring ring-2"></div>
+
+    <div class="bubble" aria-hidden="true">
+      <div class="bubble-top">
+        <div class="eyebrow accent" id="bubble-topic">Working</div>
+        <div class="tdots"><span></span><span></span><span></span></div>
+      </div>
+      <div class="bubble-lines">
+        <div class="tline" id="tline-a"></div>
+        <div class="tline" id="tline-b"></div>
+      </div>
+    </div>
+    <div class="tail tail-1"></div>
+    <div class="tail tail-2"></div>
+    <div class="tail tail-3"></div>
+
+    <div class="clawd-wrap" id="clawd-wrap"></div>
+    <div class="badge-glyph" aria-hidden="true">?</div>
+  </div>
+
+  <div class="caption">
+    <div class="eyebrow accent" id="cap-eyebrow" aria-live="polite">Idle</div>
+    <div class="headline" id="cap-headline">ready for next task</div>
+    <div class="sub" id="cap-sub">Waiting for your next prompt.</div>
+  </div>
+
+  <footer class="card-foot">
+    <span class="mono" id="foot-project">no session</span>
+    <button type="button" class="sound-btn" id="sound-btn" hidden>Enable sound</button>
+    <span class="mono" id="foot-local">Local only</span>
+  </footer>
+</main>
+<script src="./app.js"></script>
+</body>
+</html>

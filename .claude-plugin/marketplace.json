@@ -1,0 +1,12 @@
+{
+  "name": "clawd-local",
+  "description": "Local marketplace for the Clawd Companion plugin",
+  "owner": { "name": "clawd-companion" },
+  "plugins": [
+    {
+      "name": "clawd-companion",
+      "source": "./clawd-companion",
+      "description": "An animated mascot that reacts to Claude Code. Local only."
+    }
+  ]
+}
