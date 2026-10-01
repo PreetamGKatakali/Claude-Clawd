@@ -13,7 +13,11 @@
     "no bugs, only features",
     "coffee loaded, brain compiling",
     'git commit -m "progress"',
-    "it works on my machine"
+    "it works on my machine",
+    "ship it, then polish",
+    "one bug at a time",
+    "refactor later, maybe",
+    "semicolons in place"
   ];
   var idleSince = Date.now();
   var WELCOME_TEXT = "hey! welcome";
@@ -49,7 +53,7 @@
     idle: { pill: "Idle", eyebrow: "Idle", headline: READY_PHRASES[0], sub: "Waiting for your next prompt." },
     thinking: { pill: "Thinking", eyebrow: "Thinking", headline: "Working on it.", sub: "Clawd reads the topic locally. Your prompt is never stored." },
     confirm: { pill: "Needs you", eyebrow: "Needs you", headline: "Claude needs your OK.", sub: "permission request." },
-    hydrate: { pill: "Hydrate", eyebrow: "Hydration", headline: "Drink some water.", sub: "One glass. Then back to it." },
+    hydrate: { pill: "Hydrate", eyebrow: "Hydration", headline: "Time to Drink water!", sub: "One glass. Then back to it." },
     done: { pill: "Done", eyebrow: "Done", headline: "Finished.", sub: "Ready for the next one." }
   };
 

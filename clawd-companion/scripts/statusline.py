@@ -277,7 +277,7 @@ def render_sprite(grid, truecolor=True, gapfree=False):
 # --- the status line ---------------------------------------------------------
 
 def build_lines(state, topic_label, thought, tick, truecolor, columns, message=None,
-                ready="ready", gapfree=False):
+                ready="ready", gapfree=False, sub=None):
     """Assemble the two sprite rows plus the text column beside them."""
     grid = frame_for(state, tick)
     rows = render_sprite(grid, truecolor, gapfree)
@@ -292,7 +292,7 @@ def build_lines(state, topic_label, thought, tick, truecolor, columns, message=N
     elif state == "confirm":
         label, second = "needs your OK", (message or "")
     elif state == "hydrate":
-        label, second = "hydration", (message or "Drink some water.")
+        label, second = (message or "Time to Drink water!"), (sub or "")
     elif state == "done":
         label, second = "done", ""
     elif state == "welcome":
@@ -332,7 +332,7 @@ def text_line(state, topic_label, thought, message=None, ready="ready"):
     if state == "confirm":
         return "clawd: needs your OK"
     if state == "hydrate":
-        return "clawd: hydration · " + (message or "drink some water")
+        return "clawd: " + (message or "Time to Drink water!")
     if state == "done":
         return "clawd: done"
     if state == "welcome":
@@ -390,12 +390,12 @@ def main():
         stored = common.read_json(common.session_path(session_id), {})
         rec = common.expire(stored, cfg, at)
         state = rec.get("state", "idle")
-        ready = common.ready_phrase(stored, at)
+        ready = common.ready_phrase(stored, at, common.model_family(payload))
         welcome = common.welcoming(rec, at)
 
         # Hydration is global. The server owns the timer when it is up; this
         # script only advances it when the server is not running.
-        message = None
+        message = sub = None
         gl = common.read_json(common.global_path(), {})
         server_live = _server_alive(common, gl, at)
         if not server_live:
@@ -412,8 +412,9 @@ def main():
 
         if active and state != "confirm":
             state = "hydrate"
-            message = common.hydration_message(
-                gl.get("hydration_seed", 0), common.user_name(cfg))["headline"]
+            water = common.hydration_message(
+                gl.get("hydration_seed", 0), common.user_name(cfg))
+            message, sub = water.get("headline"), water.get("sub")
 
         topic_label = common.topic_label(rec.get("topic")) if rec.get("topic") else None
         thought = common.pick_thought(
@@ -444,7 +445,7 @@ def main():
         else:
             lines = build_lines(state, topic_label, thought, tick,
                                 truecolor_supported(), columns or 80, message, ready,
-                                gapfree_wanted())
+                                gapfree_wanted(), sub)
         sys.stdout.write("\n".join(prefix + lines) + "\n")
         return 0
     except Exception:

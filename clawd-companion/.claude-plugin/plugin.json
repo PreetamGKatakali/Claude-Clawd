@@ -1,7 +1,7 @@
 {
   "name": "clawd-companion",
   "displayName": "Clawd Companion",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "An animated mascot that reacts to Claude Code in a small local window and in the status line. Local only.",
   "author": { "name": "clawd-companion" },
   "license": "MIT",

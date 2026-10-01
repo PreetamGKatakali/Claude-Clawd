@@ -630,6 +630,54 @@ class TestReadyPhrases(Base):
             self.assertLessEqual(len(p), 30)
             self.assertTrue(all(ord(ch) < 128 for ch in p), p)  # no emoji
 
+    def test_every_model_list_is_short_and_plain(self):
+        for fam, phrases in self.common.READY_BY_FAMILY.items():
+            self.assertGreaterEqual(len(phrases), 6, fam)
+            self.assertTrue(phrases[0].startswith("ready"), fam)
+            self.assertEqual(len(set(phrases)), len(phrases), fam)
+            for p in phrases:
+                self.assertLessEqual(len(p), 30, p)
+                self.assertTrue(all(ord(ch) < 128 for ch in p), p)
+        self.assertIs(self.common.READY_BY_FAMILY["sonnet"], self.common.READY_PHRASES)
+
+    def test_phrases_follow_the_model(self):
+        rec = {"state": "idle", "state_since": 1000.0}
+        rp = self.common.ready_phrase
+        for fam in ("opus", "sonnet", "haiku"):
+            phrases = self.common.READY_BY_FAMILY[fam]
+            self.assertEqual(rp(rec, 1000.0, fam), phrases[0])
+            self.assertEqual(rp(rec, 1005.0, fam), phrases[1])
+            self.assertEqual(rp(rec, 1000.0 + 5 * len(phrases), fam), phrases[0])
+        # unknown model: Sonnet's list
+        for fam in (None, "gpt", ""):
+            self.assertEqual(rp(rec, 1005.0, fam), self.common.READY_PHRASES[1])
+
+    def test_family_from_the_status_line_input(self):
+        f = self.common.model_family
+        # shapes observed live from Claude Code
+        self.assertEqual(f({"model": {"id": "claude-opus-5-5", "display_name": "Opus 5.5"}}), "opus")
+        self.assertEqual(f({"model": {"id": "claude-sonnet-5-5", "display_name": "Sonnet 5.5"}}), "sonnet")
+        self.assertEqual(f({"model": {"id": "claude-haiku-4-5-20251001",
+                                      "display_name": "Haiku 4.5"}}), "haiku")
+        self.assertEqual(f({"model": {"display_name": "Opus"}}), "opus")
+        self.assertEqual(f({"model": "claude-haiku-4-5"}), "haiku")
+        for bad in ({}, {"model": None}, {"model": 7}, {"model": {"id": "something-else"}},
+                    {"model": {"id": None}}, None, []):
+            self.assertIsNone(f(bad), bad)
+
+    def test_real_script_uses_the_model_list(self):
+        self.put("x", state="idle", state_since=1000.0)
+        env = dict(os.environ)
+        env.update({"CLAWD_HOME": self.home, "CLAWD_NOW": "1000", "COLUMNS": "120"})
+        env.pop("NO_COLOR", None)
+        for model, fam in (("claude-opus-5-5", "opus"), ("claude-haiku-4-5", "haiku"),
+                           ("claude-sonnet-5-5", "sonnet")):
+            proc = subprocess.run(
+                [sys.executable, os.path.join(ROOT, "scripts", "statusline.py")],
+                input=json.dumps({"session_id": "x", "model": {"id": model}}),
+                capture_output=True, text=True, env=env)
+            self.assertIn(self.common.READY_BY_FAMILY[fam][0], proc.stdout, fam)
+
     def test_window_uses_the_same_list(self):
         with open(os.path.join(ROOT, "companion", "web", "app.js")) as f:
             js = f.read()
@@ -758,7 +806,8 @@ class TestName(Base):
         self.assertEqual(self.common.welcome_text("preetam"), "hey preetam, welcome!")
         self.assertEqual(self.common.welcome_text(""), "hey! welcome")
         msg = self.common.hydration_message(0, "preetam")
-        self.assertEqual(msg["headline"], "preetam, time to drink water.")
+        self.assertEqual(msg["headline"], "Time to Drink water, preetam!")
+        self.assertEqual(self.common.hydration_message(3)["headline"], "Time to Drink water!")
         self.assertTrue(msg["sub"])
         self.assertNotEqual(self.common.hydration_message(0)["headline"], msg["headline"])
 
@@ -818,7 +867,11 @@ class TestName(Base):
         self.common.write_atomic(self.common.global_path(), json.dumps(
             {"hydration_started": 1000.0, "last_hydration_end": 500.0, "hydration_seed": 0}))
         self.put("n", state="idle", state_since=900.0)
-        self.assertIn("preetam, time to drink water.", self.status(1001))
+        out = self.status(1001)
+        self.assertIn("Time to Drink water, preetam!", out)
+        # the tip sits on the second line, not a repeat of the headline
+        self.assertIn(self.common.hydration_message(0)["sub"], out.split("\n")[1])
+        self.assertNotIn("hydration", out)
 
     def test_window_payload_carries_only_the_clean_name(self):
         sys.path.insert(0, os.path.join(ROOT, "companion"))

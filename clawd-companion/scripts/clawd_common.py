@@ -246,8 +246,60 @@ READY_PHRASES = [
     "coffee loaded, brain compiling",
     'git commit -m "progress"',
     "it works on my machine",
+    "ship it, then polish",
+    "one bug at a time",
+    "refactor later, maybe",
+    "semicolons in place",
 ]
+# The status line knows the session's model and swaps in a list to match:
+# reasoning for Opus, low and lazy for Haiku. READY_PHRASES is Sonnet's, and
+# the list for any model it does not recognise. The window has no model and
+# always uses READY_PHRASES.
+READY_BY_FAMILY = {
+    "opus": [
+        "ready for a hard problem",
+        "thinking in first principles",
+        "edge cases already listed",
+        "proof first, code second",
+        "weighing the tradeoffs",
+        "assumptions checked twice",
+        "one more step of reasoning",
+        "big picture loaded",
+    ],
+    "sonnet": READY_PHRASES,
+    "haiku": [
+        "ready... ish",
+        "five more minutes",
+        "low battery, still here",
+        "short tasks only please",
+        "doing the bare minimum",
+        "napping between prompts",
+        "fast, not fancy",
+        "yawn... send it over",
+    ],
+}
 READY_SECONDS = 5
+
+
+def model_family(payload):
+    """'opus', 'haiku', 'sonnet' or None, from the status line input.
+
+    Claude Code sends the session's model on every refresh, for example
+    {"id": "claude-opus-5-5", "display_name": "Opus 5.5"}, and it follows
+    /model within a second (observed live on 2026-10-01).
+    """
+    model = payload.get("model") if isinstance(payload, dict) else None
+    if isinstance(model, dict):
+        text = " ".join(str(model.get(k) or "") for k in ("id", "display_name"))
+    elif isinstance(model, str):
+        text = model
+    else:
+        return None
+    text = text.lower()
+    for fam in ("opus", "haiku", "sonnet"):
+        if fam in text:
+            return fam
+    return None
 WELCOME_SECONDS = 10
 WELCOME_TEXT = "hey! welcome"
 
@@ -264,8 +316,9 @@ def welcoming(record, at=None):
         return False
 
 
-def ready_phrase(record, at=None):
+def ready_phrase(record, at=None, family=None):
     """The idle phrase for this moment, counted from when idle began."""
+    phrases = READY_BY_FAMILY.get(family) or READY_PHRASES
     at = now() if at is None else at
     rec = record or {}
     try:
@@ -283,7 +336,7 @@ def ready_phrase(record, at=None):
     except (TypeError, ValueError):
         pass
     step = int(max(0.0, at - since) // READY_SECONDS)
-    return READY_PHRASES[step % len(READY_PHRASES)]
+    return phrases[step % len(phrases)]
 
 
 def expire(record, cfg, at=None):
@@ -440,9 +493,13 @@ def hydration_message(seed, name=""):
     except (TypeError, ValueError):
         idx = 0
     msg = dict(msgs[idx])
-    if name:
-        msg["headline"] = "%s, time to drink water." % name
+    # One fixed headline; the tips in topics.json rotate under it.
+    msg["headline"] = (HYDRATION_HEADLINE_NAMED % name) if name else HYDRATION_HEADLINE
     return msg
+
+
+HYDRATION_HEADLINE = "Time to Drink water!"
+HYDRATION_HEADLINE_NAMED = "Time to Drink water, %s!"
 
 
 def global_path():

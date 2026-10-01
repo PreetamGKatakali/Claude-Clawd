@@ -133,7 +133,7 @@ status line are separate processes that never receive those variables.
 | `auto_open` | boolean | `false` | Start the server and open the window at session start |
 | `port` | number, 1024–65535 | `4756` | Preferred port on 127.0.0.1; the next free one is used if busy |
 | `sound_enabled` | boolean | `false` | Show the "Enable sound" button. Still needs a click and browser permission |
-| `display_name` | text | empty | Your name, for "hey <name>, welcome!" and "<name>, time to drink water." Wins over the name setup asked for |
+| `display_name` | text | empty | Your name, for "hey <name>, welcome!" and "Time to Drink water, <name>!" Wins over the name setup asked for |
 
 Values out of range are clamped rather than rejected, and a missing or corrupt
 `config.json` falls back to these defaults.
@@ -146,8 +146,9 @@ when `NO_COLOR` is set or when `COLUMNS` is under 32.
 **Your name.** Setup asks what Clawd should call you and saves it in
 `config.json` (change it with `install.py name --set NAME` or `--clear`). The
 `display_name` option overrides it. With a name, the hello reads "hey preetam,
-welcome!" and the water reminder "preetam, time to drink water."; without one,
-the text stays generic.
+welcome!" and the water reminder "Time to Drink water, preetam!"; without one,
+the text stays generic ("Time to Drink water!"). The line under the water
+headline is one of the short tips from `companion/web/topics.json`.
 
 **Hello on launch.** When you start `claude` fresh, Clawd waves and says
 "hey! welcome" (or "hey <name>, welcome!") for 10 seconds, then the idle phrases begin. It keys off the
@@ -155,11 +156,18 @@ the text stays generic.
 `--resume`, `--continue`, `/clear` and compaction do not wave. Sending a prompt
 ends the hello early.
 
-**Idle phrases.** While a session is idle the label starts at "ready for next
-task" and then shows a new coding joke every 5 seconds, looping. The list is
-`READY_PHRASES` in `scripts/clawd_common.py` (the window keeps a copy in
+**Idle phrases.** While a session is idle the label shows a new phrase every 5
+seconds, looping, and the list follows the session's model: reasoning lines on
+**Opus** ("ready for a hard problem", "weighing the tradeoffs", ...), coding
+jokes on **Sonnet** ("ready for next task", "tests green, mood green", ...), and
+low, lazy ones on **Haiku** ("ready... ish", "five more minutes", ...). A model
+it does not recognise gets the Sonnet list. The model comes from the `model`
+field Claude Code sends the status line on every refresh, so a `/model` switch
+shows within about a second. The lists are `READY_BY_FAMILY` in
+`scripts/clawd_common.py`; Sonnet's is `READY_PHRASES`. The companion window
+does not know the model and always uses the Sonnet list (it keeps a copy in
 `companion/web/app.js`; a test checks they match). There is no option for it:
-edit both lists and reinstall. It relies on the `refreshInterval: 1` that setup
+edit the lists and reinstall. It relies on the `refreshInterval: 1` that setup
 writes into your `statusLine`; without it the label only changes when Claude
 Code happens to refresh the status line.
 
@@ -303,6 +311,7 @@ Verified against the docs at `code.claude.com/docs` and against Claude Code
 | `COLORTERM=truecolor` reaches the **hook** process | **Verified** | Same environment dump |
 | `COLORTERM` reaches the **status line** process | **UNVERIFIED** | The status line runs as a separate process. The docs promise only `COLUMNS` and `LINES` there. The code degrades to 256-color if it is absent, so a wrong guess costs color fidelity, nothing else |
 | `TERM_PROGRAM` reaches the status line process, and reverse video (`\e[7m`) survives Claude Code's rendering | **Verified** | Live run in a pty with `TERM_PROGRAM=Apple_Terminal`: the script logged the variable, and the terminal received `\e[7m` cells. The gap measurement (block glyph 1000 units, row 1193 units in SF Mono Terminal) was read from the font with Core Text. Other Terminal.app fonts or line spacing may differ |
+| The status line input carries `model.id` and `model.display_name`, and they follow `/model` | **Verified** | Live run on 2026-10-01: `/model haiku`, `/model opus` and `/model sonnet` in a real session; the script received `claude-haiku-4-5-20251001`, `claude-opus-5-5` and `claude-sonnet-5-5` within about a second of each. Ids from Bedrock, Vertex or custom aliases were not tested; one without `opus`, `sonnet` or `haiku` in it gets the Sonnet phrases |
 | Exec-form hooks (`args` present) run with no shell | **Verified (docs)** | Hooks reference, "Exec form and shell form" |
 | A plugin's `settings.json` cannot set `statusLine` | **Verified (docs)** | Only `agent` and `subagentStatusLine` take effect |
 | `statusLine.refreshInterval` minimum is 1 second | **Verified (docs)** | Status line reference |
