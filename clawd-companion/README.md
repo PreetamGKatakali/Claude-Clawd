@@ -233,6 +233,18 @@ menu and permission prompts. This is exactly why the companion window exists —
 it keeps animating. Verified by reading the docs; see the table below for the
 part that still needs your eyes.
 
+**The sprite is split into two bands in Terminal.app.** macOS Terminal draws
+block characters from the font, and in its default font (SF Mono Terminal) a
+block covers only about 84% of the row height, leaving a strip at the top of
+each row. VS Code, Cursor and similar terminals draw blocks themselves and fill
+the cell. When `TERM_PROGRAM` is `Apple_Terminal` the status line switches to a
+gap-free renderer: the body becomes the cell background (reverse video) and the
+glyph marks the empty pixels in your terminal's own background colour. The eyes
+are also drawn two pixels tall there, since a one pixel eye fills only the
+bottom of its row. A faint line can remain under the gaps between the legs: the
+font leaves a sliver at the bottom of each row too. Other terminals get exactly
+the same output as before.
+
 **The sprite shows blocks, question marks or mojibake.** Your terminal font has
 no quadrant block glyphs (U+2580 to U+259F). Switch `status_style` to `text`.
 
@@ -290,6 +302,7 @@ Verified against the docs at `code.claude.com/docs` and against Claude Code
 | Hooks receive `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PLUGIN_DATA`, `CLAUDE_PROJECT_DIR`, `CLAUDE_PLUGIN_OPTION_*` | **Verified** | Dumped the hook process environment in a live session |
 | `COLORTERM=truecolor` reaches the **hook** process | **Verified** | Same environment dump |
 | `COLORTERM` reaches the **status line** process | **UNVERIFIED** | The status line runs as a separate process. The docs promise only `COLUMNS` and `LINES` there. The code degrades to 256-color if it is absent, so a wrong guess costs color fidelity, nothing else |
+| `TERM_PROGRAM` reaches the status line process, and reverse video (`\e[7m`) survives Claude Code's rendering | **Verified** | Live run in a pty with `TERM_PROGRAM=Apple_Terminal`: the script logged the variable, and the terminal received `\e[7m` cells. The gap measurement (block glyph 1000 units, row 1193 units in SF Mono Terminal) was read from the font with Core Text. Other Terminal.app fonts or line spacing may differ |
 | Exec-form hooks (`args` present) run with no shell | **Verified (docs)** | Hooks reference, "Exec form and shell form" |
 | A plugin's `settings.json` cannot set `statusLine` | **Verified (docs)** | Only `agent` and `subagentStatusLine` take effect |
 | `statusLine.refreshInterval` minimum is 1 second | **Verified (docs)** | Status line reference |

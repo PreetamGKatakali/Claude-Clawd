@@ -37,7 +37,8 @@ LABEL_COLORS = {
 #
 # Rules every frame obeys (the tests enforce both):
 #   * the four pixels in one cell are never two different colours, so each
-#     cell needs a foreground colour only and never a background colour;
+#     cell needs a foreground colour only and never a background colour
+#     (Terminal.app uses reverse video instead, see render_cells_gapfree);
 #   * the eyes are holes, not a dark colour, so they read on any theme.
 # The terminal background shows through holes, which is what makes the face.
 BASE = [
@@ -187,18 +188,99 @@ def render_cells(grid, truecolor=True):
     return rows
 
 
-def render_sprite(grid, truecolor=True):
+# --- gap-free sprite for Terminal.app ----------------------------------------
+#
+# Terminal.app draws block characters from the font instead of filling the
+# cell. In its default font (SF Mono Terminal) a block glyph covers only about
+# 84% of the row height, leaving an empty strip at the top of every row that
+# tore the sprite into two bands. A background colour does fill the whole
+# cell, strip included. So where the strip should be body-coloured the cell is
+# drawn in reverse video: the cell background takes the body colour and the
+# glyph marks the empty quadrants in the terminal's own background colour.
+# No colour is guessed for the terminal background; reverse video swaps in the
+# terminal's own.
+
+REVERSE = "\033[7m"
+
+
+def gapfree_wanted(env=None):
+    env = os.environ if env is None else env
+    return env.get("TERM_PROGRAM") == "Apple_Terminal"
+
+
+def _lit(grid, r, c):
+    return 0 <= r < len(grid) and 0 <= c < len(grid[r]) and grid[r][c] in PALETTE
+
+
+def tall_eyes(grid):
+    """Grow each eye hole up one pixel, inside the head only.
+
+    A one pixel eye fills only the lower part of its row in Terminal.app and
+    reads as a dot; two pixels make the tall eye the other terminals show.
+    """
+    g = [list(row) for row in grid]
+    for c in range(len(g[0])):
+        if g[1][c] == "." and g[0][c] == "B" and g[2][c] == "B":
+            g[0][c] = "."
+    return ["".join(row) for row in g]
+
+
+def _fill_strip(grid, r, c):
+    """Should the strip at the top of the cell at pixel (r, c) be filled?
+
+    Yes when some half has body there (its top pixel and the one above it are
+    lit), unless a half is an open gap, empty in this cell and below it, where
+    a filled strip would float as a stray sliver.
+    """
+    want, gap = False, False
+    for cc in (c, c + 1):
+        top = _lit(grid, r, cc)
+        if top and (r == 0 or _lit(grid, r - 1, cc)):
+            want = True
+        if not top and not _lit(grid, r + 1, cc) and not _lit(grid, r + 2, cc):
+            gap = True
+    return want and not gap
+
+
+def render_cells_gapfree(grid, truecolor=True):
+    """Like render_cells, but with no strips between rows in Terminal.app."""
+    grid = tall_eyes(grid)
+    rows = []
+    width = len(grid[0])
+    for r in range(0, len(grid), 2):
+        out = []
+        for c in range(0, width, 2):
+            px = ((r, c), (r, c + 1), (r + 1, c), (r + 1, c + 1))
+            bits, colour = 0, None
+            for p in px:
+                bits <<= 1
+                if _lit(grid, *p):
+                    bits |= 1
+                    colour = colour or PALETTE[grid[p[0]][p[1]]]
+            if not bits:
+                out.append(" ")
+            elif _fill_strip(grid, r, c):
+                out.append(fg(colour, truecolor) + REVERSE + QUADRANTS[15 ^ bits] + RESET)
+            else:
+                out.append(fg(colour, truecolor) + QUADRANTS[bits] + RESET)
+        rows.append("".join(out))
+    return rows
+
+
+def render_sprite(grid, truecolor=True, gapfree=False):
     """Four pixel rows become two text rows."""
+    if gapfree:
+        return render_cells_gapfree(grid, truecolor)
     return render_cells(grid, truecolor)
 
 
 # --- the status line ---------------------------------------------------------
 
 def build_lines(state, topic_label, thought, tick, truecolor, columns, message=None,
-                ready="ready"):
+                ready="ready", gapfree=False):
     """Assemble the two sprite rows plus the text column beside them."""
     grid = frame_for(state, tick)
-    rows = render_sprite(grid, truecolor)
+    rows = render_sprite(grid, truecolor, gapfree)
 
     label_rgb = LABEL_COLORS.get(state, LABEL_COLORS["idle"])
     if state == "thinking":
@@ -361,7 +443,8 @@ def main():
             lines = [line]
         else:
             lines = build_lines(state, topic_label, thought, tick,
-                                truecolor_supported(), columns or 80, message, ready)
+                                truecolor_supported(), columns or 80, message, ready,
+                                gapfree_wanted())
         sys.stdout.write("\n".join(prefix + lines) + "\n")
         return 0
     except Exception:

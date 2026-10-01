@@ -393,13 +393,99 @@ class TestSprite(Base):
 
     def test_every_width_fits(self):
         states = ("idle", "thinking", "confirm", "hydrate", "done", "welcome")
-        for cols in range(self.sl.MIN_COLUMNS_FOR_SPRITE, 220):
-            for st in states:
-                for tick in (0, 1, 2):
-                    lines = self.sl.build_lines(st, "Documentation", "y" * 200, tick,
-                                                True, cols, message="z" * 200)
-                    for line in self._plain(lines):
-                        self.assertLessEqual(len(line), cols, "%s at %d cols" % (st, cols))
+        for gapfree in (False, True):
+            for cols in range(self.sl.MIN_COLUMNS_FOR_SPRITE, 220):
+                for st in states:
+                    for tick in (0, 1, 2):
+                        lines = self.sl.build_lines(st, "Documentation", "y" * 200, tick,
+                                                    True, cols, message="z" * 200,
+                                                    gapfree=gapfree)
+                        for line in self._plain(lines):
+                            self.assertLessEqual(len(line), cols,
+                                                 "%s at %d cols" % (st, cols))
+
+
+class TestGapFree(Base):
+    """Terminal.app: reverse video closes the strip between the two rows."""
+
+    def setUp(self):
+        Base.setUp(self)
+        import statusline
+        self.sl = statusline
+
+    def _cells(self, row):
+        # Split a rendered row into (reversed, glyph) per text cell.
+        import re as _re
+        cells = []
+        for m in _re.finditer("((?:\033\\[[0-9;]*m)*)([^\033])(?:\033\\[0m)?", row):
+            cells.append(("\033[7m" in m.group(1), m.group(2)))
+        return cells
+
+    def test_detects_terminal_app_only(self):
+        self.assertTrue(self.sl.gapfree_wanted({"TERM_PROGRAM": "Apple_Terminal"}))
+        self.assertFalse(self.sl.gapfree_wanted({"TERM_PROGRAM": "vscode"}))
+        self.assertFalse(self.sl.gapfree_wanted({"TERM_PROGRAM": "iTerm.app"}))
+        self.assertFalse(self.sl.gapfree_wanted({}))
+
+    def test_other_terminals_are_unchanged(self):
+        for frames in self.sl.FRAMES.values():
+            for grid in frames:
+                self.assertEqual(self.sl.render_sprite(grid),
+                                 self.sl.render_cells(grid))
+                self.assertNotIn("\033[7m", "".join(self.sl.render_sprite(grid)))
+
+    def test_same_width_as_the_normal_sprite(self):
+        for name, frames in self.sl.FRAMES.items():
+            for grid in frames:
+                a = self.sl.render_cells(grid)
+                b = self.sl.render_cells_gapfree(grid)
+                for ra, rb in zip(a, b):
+                    self.assertEqual(len(self._cells(ra)), len(self._cells(rb)), name)
+
+    def test_reverse_cells_show_the_same_pixels(self):
+        # A reversed cell draws the empty quadrants, so its glyph must be the
+        # complement of what the normal renderer draws, for the same grid.
+        q = self.sl.QUADRANTS
+        for name, frames in self.sl.FRAMES.items():
+            for grid in frames:
+                tall = self.sl.tall_eyes(grid)
+                plain = self.sl.render_cells(tall)
+                gap = self.sl.render_cells_gapfree(grid)
+                for pr, gr in zip(plain, gap):
+                    for (_, pg), (rev, gg) in zip(self._cells(pr), self._cells(gr)):
+                        want = q[15 ^ q.index(pg)] if rev else pg
+                        self.assertEqual(gg, want, name)
+
+    def test_no_background_escape_and_no_guessed_colour(self):
+        for frames in self.sl.FRAMES.values():
+            for grid in frames:
+                for tc in (True, False):
+                    out = "".join(self.sl.render_cells_gapfree(grid, tc))
+                    self.assertNotIn("\033[48;", out)
+
+    def test_body_below_the_head_is_reversed(self):
+        # The arm row under the head must fill its top strip, or the head and
+        # the arms split apart: the bug this mode exists for.
+        bottom = self._cells(self.sl.render_cells_gapfree(self.sl.BASE)[1])
+        self.assertTrue(all(rev for rev, _ in bottom[1:6]), bottom)
+        # The outer arms have nothing above them, so they stay plain.
+        self.assertFalse(bottom[0][0])
+        self.assertFalse(bottom[6][0])
+
+    def test_eyes_are_tall_inside_the_head_only(self):
+        tall = self.sl.tall_eyes(self.sl.BASE)
+        self.assertEqual(tall[0], "..BB.BBBB.BB..")
+        self.assertEqual(tall[1:], self.sl.BASE[1:])
+        self.assertEqual(self.sl.tall_eyes(self.sl.BLINK), self.sl.BLINK)
+        # The glass's open top is not an eye.
+        self.assertEqual(self.sl.tall_eyes(self.sl.HYD_B)[0][14:], self.sl.HYD_B[0][14:])
+
+    def test_open_gaps_never_get_a_floating_sliver(self):
+        # The glass walls sit beside open air; filling their strip would draw
+        # a sliver over the empty half (it looked like "][").
+        top = self._cells(self.sl.render_cells_gapfree(self.sl.HYD_B)[0])
+        for rev, glyph in top[7:]:
+            self.assertFalse(rev, top)
 
 
 class TestHookSafety(Base):
