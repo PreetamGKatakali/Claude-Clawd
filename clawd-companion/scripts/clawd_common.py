@@ -33,6 +33,7 @@ DEFAULTS = {
     "opus_color": "none",
     "sonnet_color": "none",
     "haiku_color": "none",
+    "menu_bar": False,
 }
 
 # Body colours for the clawd_color option. The names match the option list in
@@ -202,6 +203,47 @@ def clean_name(value):
         return ""
     kept = "".join(ch if (ch.isalnum() or ch in " -'.") else " " for ch in value)
     return " ".join(kept.split())[:NAME_MAX].strip()
+
+
+PROJECT_MAX = 80
+
+
+def clean_text(value, limit=PROJECT_MAX):
+    """Drop control, format and other non-printing characters.
+
+    A folder name can hold ESC and friends; printed raw they become terminal
+    escape sequences (window title, colours, worse). Bidi overrides go too.
+    """
+    if not isinstance(value, str):
+        return None
+    import unicodedata
+    kept = "".join(ch for ch in value if not unicodedata.category(ch).startswith("C"))
+    kept = " ".join(kept.split())[:limit].strip()
+    return kept or None
+
+
+def pid_matches(pid, needle):
+    """True only if process `pid` is alive and its command line contains needle.
+
+    Guards stop commands against a stale pid file whose number macOS or Linux
+    has since given to an unrelated program.
+    """
+    import subprocess
+    try:
+        pid = int(pid)
+        if pid <= 0:
+            return False
+        if os.name == "nt":
+            out = subprocess.run(
+                ["tasklist", "/FI", "PID eq %d" % pid, "/FO", "CSV", "/NH"],
+                capture_output=True, text=True, timeout=5).stdout
+            # Windows shows only the image name, so a python process is the best check.
+            return ('"%d"' % pid) in out and "python" in out.lower()
+        out = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
+                             capture_output=True, text=True, timeout=5).stdout
+        return needle in out
+    except Exception:
+        return False
 
 
 def user_name(cfg):
@@ -464,6 +506,7 @@ def merge_sessions(records, cfg, at=None):
         return {"state": "idle", "topic": None, "seed": 0,
                 "project": None, "updated": at, "state_since": at, "sessions": 0}
     rec = dict(best[1])
+    rec["project"] = clean_text(rec.get("project"))  # files written by older versions
     rec["sessions"] = len(records)
     return rec
 

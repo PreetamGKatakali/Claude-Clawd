@@ -59,6 +59,8 @@ def copy_assets():
         (os.path.join(PLUGIN_ROOT, "scripts"), os.path.join(base, "scripts")),
         (os.path.join(PLUGIN_ROOT, "companion", "web"), os.path.join(base, "web")),
         (os.path.join(PLUGIN_ROOT, "companion"), os.path.join(base, "companion")),
+        # Swift source for the macOS menu bar; menubar.py compiles it.
+        (os.path.join(PLUGIN_ROOT, "companion", "menubar"), os.path.join(base, "companion", "menubar")),
     ]
     copied = []
     for src, dst in pairs:

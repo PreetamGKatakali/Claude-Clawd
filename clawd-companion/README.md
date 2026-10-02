@@ -139,6 +139,7 @@ status line are separate processes that never receive those variables.
 | `sound_enabled` | boolean | `false` | Show the "Enable sound" button. Still needs a click and browser permission |
 | `clawd_color` | `classic` \| `coral` \| `red` \| `pink` \| `purple` \| `blue` \| `teal` \| `green` \| `yellow` \| `brown` \| `gray` \| `white` | `classic` | Clawd's body colour in the status line and the window. `white` is hard to see on a light theme |
 | `opus_color`, `sonnet_color`, `haiku_color` | `none` or any `clawd_color` value | `none` | Clawd's colour while you use that model family. `none` uses `clawd_color` |
+| `menu_bar` | boolean | `false` | **macOS only.** Clawd in the Mac menu bar, and a notification when Claude Code needs your approval. Does nothing on Windows or Linux |
 | `display_name` | text | empty | Your name, for "hey <name>, welcome!" and "Time to Drink water, <name>!" Wins over the name setup asked for |
 
 Values out of range are clamped rather than rejected, and a missing or corrupt
@@ -163,6 +164,30 @@ restarts. Until then the second status line row says "Clawd settings saved ·
 restart Claude Code to apply", and it goes away once the new values are in use.
 To notice the change, the status line reads this plugin's saved options from
 `pluginConfigs` in `~/.claude/settings.json` (only that entry, read only).
+
+**Menu bar (macOS only).** Turn on `menu_bar` and restart Claude Code. At the
+next session start, the hook builds a small app from
+`companion/menubar/ClawdBar.swift` with the system `swiftc` (first time only,
+about 2 seconds, signed ad hoc, nothing downloaded) into
+`~/.claude/clawd-companion/menubar/`, then starts it. It needs the Xcode Command
+Line Tools; without them it is skipped (`python3 scripts/menubar.py start`
+prints why). The app:
+
+- shows Clawd in your colour, animated per state, with a gold dot and "needs
+  you" while a permission prompt waits;
+- reads the same allowlisted `/state` snapshot as the window, from 127.0.0.1
+  only, and starts the companion server if it is not running (and stops that
+  server again when it quits);
+- posts "Clawd needs your approval" when the state turns to needs-your-OK,
+  unless the app Claude Code runs in is already in front. Clicking the
+  notification brings that app forward. You still approve in the terminal;
+- has a menu with the state, project, "Open Clawd window", "Bring <app> to
+  front", "Send a test notification" and "Hide until next session";
+- quits by itself once `menu_bar` is off.
+
+`/plugin` shows the option on every platform: the manifest has no field to hide
+an option per OS (the `userConfig` keys are strict), so the title says "macOS
+only" and the code checks `sys.platform` instead.
 
 **Your name.** Setup asks what Clawd should call you and saves it in
 `config.json` (change it with `install.py name --set NAME` or `--clear`). The
@@ -304,6 +329,18 @@ file in `~/.claude/clawd-companion/state/` also works.
 - **There are no write endpoints.** `POST`, `PUT`, `DELETE` and `HEAD` return
   405. Static paths are contained to the web directory, so `..` cannot escape.
 - **No prompt text, ever.** See "How your prompt is handled" above.
+- **Folder names are cleaned.** The project name is the only text from your
+  machine that Clawd prints. Control, format and bidi characters are stripped
+  (and it is cut to 80 characters) when a hook saves it and again when it is
+  read, so a folder named with ESC sequences cannot drive your terminal.
+- **Stop checks the process first.** `server.py --stop` and `menubar.py stop`
+  only signal a pid whose command line is Clawd's (`ps`), so a stale pid file
+  never stops an unrelated program. On Windows the check is weaker (the image
+  name must be python) and UNVERIFIED.
+- **Chained status line.** If setup chained onto your old status line, that
+  command runs through a shell, exactly as Claude Code ran it before. It comes
+  from your own `config.json`; anything able to edit that file can already run
+  code as you.
 - **Request logging is off**, so paths and timings do not reach any log.
 - **State is written atomically** (temp file then `os.replace`), so a reader
   never sees a half-written file.
@@ -333,7 +370,10 @@ Verified against the docs at `code.claude.com/docs` and against Claude Code
 | `COLORTERM` reaches the **status line** process | **UNVERIFIED** | The status line runs as a separate process. The docs promise only `COLUMNS` and `LINES` there. The code degrades to 256-color if it is absent, so a wrong guess costs color fidelity, nothing else |
 | `TERM_PROGRAM` reaches the status line process, and reverse video (`\e[7m`) survives Claude Code's rendering | **Verified** | Live run in a pty with `TERM_PROGRAM=Apple_Terminal`: the script logged the variable, and the terminal received `\e[7m` cells. The gap measurement (block glyph 1000 units, row 1193 units in SF Mono Terminal) was read from the font with Core Text. Other Terminal.app fonts or line spacing may differ |
 | The status line input carries `model.id` and `model.display_name`, and they follow `/model` | **Verified** | Live run on 2026-10-01: `/model haiku`, `/model opus` and `/model sonnet` in a real session; the script received `claude-haiku-4-5-20251001`, `claude-opus-5-5` and `claude-sonnet-5-5` within about a second of each. Ids from Bedrock, Vertex or custom aliases were not tested; one without `opus`, `sonnet` or `haiku` in it gets the Sonnet phrases |
-| `/plugin` saves options in `settings.json` under `pluginConfigs` → `clawd-companion@<marketplace>` → `options` | **UNVERIFIED** | Seen in a live settings file on 2026-10-02 after saving `clawd_color` in `/plugin`; not found in the docs. If the layout changes, the restart notice never shows and nothing else is affected |
+| `/plugin` saves options in `settings.json` under `pluginConfigs` → `clawd-companion@<marketplace>` → `options` | **Verified** | Seen in a live settings file on 2026-10-02 after saving `clawd_color` in `/plugin`. The plugin manifest reference names `pluginConfigs` in `settings.json` as where non-sensitive values go; the exact nesting is from the live file |
+| A `userConfig` option cannot be limited to one OS | **Verified (docs)** | The manifest reference lists every option field (`type`, `title`, `description`, `required`, `default`, `options`, `multiple`, `sensitive`, `min`/`max`) and rejects unknown ones |
+| macOS shows native notifications from the ad-hoc-signed menu bar app | **UNVERIFIED** | It asks permission on first launch. If macOS refuses, it falls back to an AppleScript notification, which works but does not switch to the terminal on click |
+| `__CFBundleIdentifier` in the hook environment names the app Claude Code runs in | **UNVERIFIED** | Seen live as Cursor's id in this session; not documented. Without it, "Bring to front" uses Terminal |
 | A saved option reaches the hooks only after a restart | **UNVERIFIED** | Not tested. A `/reload-plugins` may already be enough, in which case the notice is overcautious |
 | Exec-form hooks (`args` present) run with no shell | **Verified (docs)** | Hooks reference, "Exec form and shell form" |
 | A plugin's `settings.json` cannot set `statusLine` | **Verified (docs)** | Only `agent` and `subagentStatusLine` take effect |
@@ -429,9 +469,11 @@ clawd-companion/
 │   ├── classify.py              prompt -> topic, keyword heuristics only
 │   ├── hook.py                  single entry point for every event
 │   ├── statusline.py            sprite grids, quadrant renderer, text fallback
+│   ├── menubar.py               macOS only: build and start the menu bar app
 │   └── install.py               status line install/uninstall, asset copy
 ├── companion/
 │   ├── server.py                127.0.0.1 only; /, /state, /events
+│   ├── menubar/ClawdBar.swift   macOS menu bar Clawd and approval notifications
 │   └── web/                     index.html, style.css, app.js, clawd.svg, topics.json, fonts/
 ├── skills/{setup,open,stop,uninstall}/SKILL.md
 ├── tests/test_clawd.py          56 tests, injectable clock, no sleeping

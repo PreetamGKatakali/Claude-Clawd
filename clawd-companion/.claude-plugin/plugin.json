@@ -1,7 +1,7 @@
 {
   "name": "clawd-companion",
   "displayName": "Clawd Companion",
-  "version": "0.1.10",
+  "version": "0.1.13",
   "description": "An animated mascot that reacts to Claude Code in a small local window and in the status line. Local only.",
   "author": { "name": "clawd-companion" },
   "license": "MIT",
@@ -105,6 +105,12 @@
       "type": "boolean",
       "title": "Allow sound and notifications",
       "description": "Show the Enable sound button in the window. Still requires a click and browser permission.",
+      "default": false
+    },
+    "menu_bar": {
+      "type": "boolean",
+      "title": "Menu bar Clawd (macOS only)",
+      "description": "Show Clawd in the Mac menu bar and a notification when Claude Code needs your approval. Built on your Mac the first time. Does nothing on Windows or Linux.",
       "default": false
     }
   }

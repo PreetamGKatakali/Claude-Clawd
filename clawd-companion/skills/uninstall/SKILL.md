@@ -5,9 +5,10 @@ description: Remove the Clawd companion status line and restore the previous one
 
 # Uninstall clawd-companion
 
-## 1. Stop the server
+## 1. Stop the menu bar Clawd and the server
 
 ```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/menubar.py" stop
 python3 "${CLAUDE_PLUGIN_ROOT}/companion/server.py" --stop
 ```
 

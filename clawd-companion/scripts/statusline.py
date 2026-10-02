@@ -437,7 +437,8 @@ def main():
             state, message = "welcome", common.welcome_text(common.user_name(cfg))
 
         if state == "confirm":
-            message = (rec.get("project") or "") and (rec["project"] + " · permission request")
+            project = common.clean_text(rec.get("project")) or ""
+            message = project and (project + " · permission request")
 
         no_color = bool(os.environ.get("NO_COLOR"))
         try:

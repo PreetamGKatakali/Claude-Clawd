@@ -40,10 +40,9 @@ CONFIRM_NOTIFICATIONS = (
 )
 
 
-def _project_name(cwd):
+def _project_name(cwd, common):
     try:
-        name = os.path.basename(os.path.normpath(str(cwd or "")))
-        return name or None
+        return common.clean_text(os.path.basename(os.path.normpath(str(cwd or ""))))
     except Exception:
         return None
 
@@ -77,6 +76,24 @@ def _auto_open(common, cfg):
         pass
 
 
+def _menu_bar(cfg):
+    """Build (first time only) and start the menu-bar Clawd, detached. macOS only."""
+    if sys.platform != "darwin":
+        return
+    import subprocess
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "menubar.py")
+    if not os.path.isfile(script):
+        return
+    try:
+        devnull = open(os.devnull, "wb")
+        subprocess.Popen(
+            [sys.executable or "python3", script, "start"],
+            stdout=devnull, stderr=devnull, stdin=subprocess.DEVNULL,
+            start_new_session=True)
+    except Exception:
+        pass
+
+
 def handle(event, payload, common):
     cfg = common.refresh_config_from_env()
     common.ensure_dirs()
@@ -89,7 +106,7 @@ def handle(event, payload, common):
     prev_state = rec.get("state", "idle")
     rec.setdefault("seed", _seed())
     rec["session_id"] = session_id
-    rec["project"] = _project_name(payload.get("cwd")) or rec.get("project")
+    rec["project"] = _project_name(payload.get("cwd"), common) or common.clean_text(rec.get("project"))
     rec["updated"] = at
 
     def to(state, topic=None, reseed=False):
@@ -114,6 +131,8 @@ def handle(event, payload, common):
             rec.pop("welcome_until", None)
         if cfg.get("auto_open"):
             _auto_open(common, cfg)
+        if cfg.get("menu_bar"):
+            _menu_bar(cfg)
 
     elif event == "UserPromptSubmit":
         import classify

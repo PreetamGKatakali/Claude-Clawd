@@ -1028,6 +1028,171 @@ class TestModelColor(Base):
         self.assertEqual(out.strip(), "clawd: " + self.common.RESTART_TEXT)
 
 
+class TestMenuBar(Base):
+    def setUp(self):
+        super().setUp()
+        import menubar
+        self.mb = menubar
+        self.calls = []
+        self._saved = (menubar.supported, menubar.build, menubar.launch, menubar.running_pid)
+        menubar.launch = lambda: self.calls.append("launch")
+        menubar.build = lambda src: self.calls.append("build")
+        menubar.running_pid = lambda: None
+
+    def tearDown(self):
+        (self.mb.supported, self.mb.build, self.mb.launch, self.mb.running_pid) = self._saved
+        super().tearDown()
+
+    def test_option_is_macos_only_boolean_off_by_default(self):
+        with open(os.path.join(ROOT, ".claude-plugin", "plugin.json")) as f:
+            opt = json.load(f)["userConfig"]["menu_bar"]
+        self.assertEqual(opt["type"], "boolean")
+        self.assertIs(opt["default"], False)
+        self.assertIn("macOS", opt["title"])
+        self.assertIs(self.common.load_config()["menu_bar"], False)
+        self.assertIs(self.common.coerce_config({"menu_bar": "true"})["menu_bar"], True)
+
+    def test_does_nothing_off_macos(self):
+        self.mb.supported = lambda: False
+        msg = self.mb.start({"menu_bar": True})
+        self.assertIn("macOS only", msg)
+        self.assertEqual(self.calls, [])
+
+    def test_does_nothing_when_off(self):
+        self.mb.supported = lambda: True
+        self.mb.start({"menu_bar": False})
+        self.assertEqual(self.calls, [])
+
+    def test_builds_once_then_only_launches(self):
+        self.mb.supported = lambda: True
+        self.mb.start({"menu_bar": True})
+        self.assertEqual(self.calls, ["build", "launch"])
+        src = self.mb.source_path()
+        os.makedirs(os.path.dirname(self.mb.binary_path()))
+        open(self.mb.binary_path(), "w").close()
+        self.common.write_atomic(self.mb.stamp_path(), self.mb.source_hash(src))
+        self.calls[:] = []
+        self.mb.start({"menu_bar": True})
+        self.assertEqual(self.calls, ["launch"])
+
+    def test_source_change_triggers_rebuild(self):
+        src = self.mb.source_path()
+        os.makedirs(os.path.dirname(self.mb.binary_path()))
+        open(self.mb.binary_path(), "w").close()
+        self.common.write_atomic(self.mb.stamp_path(), "old")
+        self.assertTrue(self.mb.needs_build(src))
+
+    def test_already_running_is_left_alone(self):
+        self.mb.supported = lambda: True
+        self.mb.running_pid = lambda: 123
+        src = self.mb.source_path()
+        os.makedirs(os.path.dirname(self.mb.binary_path()))
+        open(self.mb.binary_path(), "w").close()
+        self.common.write_atomic(self.mb.stamp_path(), self.mb.source_hash(src))
+        self.assertIn("already running", self.mb.start({"menu_bar": True}))
+        self.assertEqual(self.calls, [])
+
+    def test_terminal_id_is_validated(self):
+        old = os.environ.get("__CFBundleIdentifier")
+        try:
+            os.environ["__CFBundleIdentifier"] = "com.googlecode.iterm2"
+            self.assertEqual(self.mb.terminal_id(), "com.googlecode.iterm2")
+            os.environ["__CFBundleIdentifier"] = "bad id; rm -rf"
+            self.assertEqual(self.mb.terminal_id(), "com.apple.Terminal")
+        finally:
+            if old is None:
+                os.environ.pop("__CFBundleIdentifier", None)
+            else:
+                os.environ["__CFBundleIdentifier"] = old
+
+    def test_swift_source_ships_and_is_copied(self):
+        self.assertTrue(os.path.isfile(os.path.join(ROOT, "companion", "menubar", "ClawdBar.swift")))
+        import install
+        install.copy_assets()
+        self.assertTrue(os.path.isfile(
+            os.path.join(self.home, "companion", "menubar", "ClawdBar.swift")))
+
+    def test_swift_talks_to_loopback_only(self):
+        with open(os.path.join(ROOT, "companion", "menubar", "ClawdBar.swift")) as f:
+            src = f.read()
+        hosts = set(__import__("re").findall(r"https?://([^/:\"]+)", src))
+        self.assertEqual(hosts, {"127.0.0.1"})
+
+
+class TestHardening(Base):
+    EVIL = "/tmp/evil\x1b]0;PWNED\x07x‮yy"
+
+    def hook(self, event, payload):
+        env = dict(os.environ)
+        env["CLAWD_HOME"] = self.home
+        subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "hook.py"), event],
+                       input=json.dumps(payload), capture_output=True, text=True, env=env)
+
+    def test_clean_text_drops_control_and_bidi(self):
+        c = self.common.clean_text
+        self.assertEqual(c("evil\x1b]0;PWNED\x07x"), "evil]0;PWNEDx")
+        self.assertEqual(c("a‮b​c"), "abc")
+        self.assertEqual(c("my app"), "my app")
+        self.assertEqual(c("café-日本"), "café-日本")
+        self.assertIsNone(c("\x1b\x07"))
+        self.assertIsNone(c(None))
+        self.assertEqual(len(c("x" * 500)), self.common.PROJECT_MAX)
+
+    def test_folder_name_cannot_inject_escapes_into_the_status_line(self):
+        self.hook("PermissionRequest", {"session_id": "e", "cwd": self.EVIL})
+        rec = self.common.read_json(self.common.session_path("e"))
+        self.assertNotIn("\x1b", rec["project"])
+        env = dict(os.environ, CLAWD_HOME=self.home, COLUMNS="120")
+        env.pop("NO_COLOR", None)
+        out = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "statusline.py")],
+                             input=json.dumps({"session_id": "e"}), capture_output=True,
+                             text=True, env=env).stdout
+        self.assertIn("PWNED", out)          # the text survives...
+        self.assertNotIn("\x1b]", out)       # ...but not as an escape sequence
+        self.assertNotIn("\x07", out)
+        self.assertNotIn("‮", out)
+
+    def test_old_state_files_are_cleaned_on_read(self):
+        self.put("old", state="confirm", project="bad\x1b[2Jname", updated=2000.0)
+        os.environ["CLAWD_NOW"] = "2001"
+        cfg = self.common.load_config()
+        merged = self.common.merge_sessions(self.common.live_sessions(cfg, 2001.0), cfg, 2001.0)
+        self.assertEqual(merged["project"], "bad[2Jname")
+
+    def test_pid_matches_only_our_process(self):
+        child = subprocess.Popen(["sleep", "30"])
+        try:
+            self.assertTrue(self.common.pid_matches(child.pid, "sleep"))
+            self.assertFalse(self.common.pid_matches(child.pid, "server.py"))
+        finally:
+            child.kill()
+            child.wait()
+        self.assertFalse(self.common.pid_matches(child.pid, "sleep"))  # gone
+        me = os.getpid()
+        self.assertFalse(self.common.pid_matches(me, "ClawdBar"))
+        self.assertFalse(self.common.pid_matches(0, "python"))
+        self.assertFalse(self.common.pid_matches("junk", "python"))
+
+    def test_stop_leaves_an_unrelated_process_alone(self):
+        sleeper = subprocess.Popen(["sleep", "30"])
+        try:
+            self.common.write_atomic(os.path.join(self.home, "server.pid"), "%d\n" % sleeper.pid)
+            out = subprocess.run(
+                [sys.executable, os.path.join(ROOT, "companion", "server.py"), "--stop"],
+                capture_output=True, text=True,
+                env=dict(os.environ, CLAWD_HOME=self.home)).stdout
+            self.assertIn("not running", out)
+            self.assertIsNone(sleeper.poll())  # still alive
+            import menubar
+            self.common.write_atomic(menubar.pid_path(), "%d\n" % sleeper.pid)
+            self.assertIsNone(menubar.running_pid())
+            menubar.stop()
+            self.assertIsNone(sleeper.poll())
+        finally:
+            sleeper.kill()
+            sleeper.wait()
+
+
 class TestStatusLineProcess(Base):
     def run_sl(self, payload, env_extra=None):
         env = dict(os.environ)

@@ -425,11 +425,15 @@ def stop(_args):
     except Exception:
         sys.stdout.write("clawd-companion: not running\n")
         return 0
-    try:
-        os.kill(pid, 15)
-        sys.stdout.write("clawd-companion: stopped (pid %d)\n" % pid)
-    except OSError:
+    # A stale pid file may name a process that is not ours any more.
+    if not common.pid_matches(pid, "server.py"):
         sys.stdout.write("clawd-companion: not running\n")
+    else:
+        try:
+            os.kill(pid, 15)
+            sys.stdout.write("clawd-companion: stopped (pid %d)\n" % pid)
+        except OSError:
+            sys.stdout.write("clawd-companion: not running\n")
     for path in (port_file(), pid_file()):
         try:
             os.unlink(path)
