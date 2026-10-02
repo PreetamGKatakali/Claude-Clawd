@@ -46,8 +46,43 @@
     .then(function (r) { return r.text(); })
     .then(function (svg) {
       document.getElementById("clawd-wrap").innerHTML = svg;
+      paintedColor = null;
+      paint(current && current.color);
     })
     .catch(function () { /* the card still works without art */ });
+
+  // Body colour from the clawd_color option. The SVG's own colours are the
+  // classic look; another colour recolours the body and derives the arm, leg
+  // and sheen shades from it the way the classic ones relate to its body.
+  var CLASSIC = "#D97757";
+  var paintedColor = null;
+
+  function mix(hex, toward, amount) {
+    var out = "#";
+    for (var i = 1; i < 7; i += 2) {
+      var v = parseInt(hex.substr(i, 2), 16);
+      v = Math.round(v + (toward - v) * amount);
+      out += ("0" + v.toString(16)).slice(-2);
+    }
+    return out.toUpperCase();
+  }
+
+  function fill(sel, color) {
+    var nodes = document.querySelectorAll(sel);
+    for (var i = 0; i < nodes.length; i++) { nodes[i].setAttribute("fill", color); }
+  }
+
+  function paint(color) {
+    if (typeof color !== "string" || !/^#[0-9A-Fa-f]{6}$/.test(color)) { color = CLASSIC; }
+    color = color.toUpperCase();
+    if (color === paintedColor || !document.getElementById("body")) { return; }
+    var classic = color === CLASSIC;
+    fill("#body", color);
+    fill("#arm-left rect, #arm-right rect", classic ? "#C96A49" : mix(color, 0, 0.08));
+    fill("#legs", classic ? "#B85A3A" : mix(color, 0, 0.16));
+    fill("#clawd-sheen", classic ? "#E8977A" : mix(color, 255, 0.3));
+    paintedColor = color;
+  }
 
   var COPY = {
     idle: { pill: "Idle", eyebrow: "Idle", headline: READY_PHRASES[0], sub: "Waiting for your next prompt." },
@@ -65,6 +100,7 @@
     if (!s) { return; }
     var state = s.state || "idle";
     var copy = COPY[state] || COPY.idle;
+    paint(s.color);
 
     if (card.getAttribute("data-state") !== state) {
       card.setAttribute("data-state", state);

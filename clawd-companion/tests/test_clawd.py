@@ -19,6 +19,10 @@ class Base(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.mkdtemp(prefix="clawd-test-")
         os.environ["CLAWD_HOME"] = self.home
+        # Keep the real ~/.claude/settings.json out of every test.
+        self.claude_dir = os.path.join(self.home, "claude-config")
+        os.makedirs(self.claude_dir)
+        os.environ["CLAUDE_CONFIG_DIR"] = self.claude_dir
         import clawd_common
         self.common = clawd_common
         clawd_common.ensure_dirs()
@@ -27,6 +31,7 @@ class Base(unittest.TestCase):
         shutil.rmtree(self.home, ignore_errors=True)
         os.environ.pop("CLAWD_HOME", None)
         os.environ.pop("CLAWD_NOW", None)
+        os.environ.pop("CLAUDE_CONFIG_DIR", None)
 
     def put(self, sid, **fields):
         rec = {"session_id": sid, "state": "idle", "seed": 1,
@@ -882,6 +887,145 @@ class TestName(Base):
         self.assertEqual(snap["name"], "pree tam b")
         self.common.write_atomic(self.common.config_path(), json.dumps({}))
         self.assertEqual(server.snapshot()["name"], "")
+
+
+class TestColor(Base):
+    def test_every_option_has_a_colour(self):
+        with open(os.path.join(ROOT, ".claude-plugin", "plugin.json")) as f:
+            plugin = json.load(f)
+        opt = plugin["userConfig"]["clawd_color"]
+        self.assertEqual(opt["options"], list(self.common.CLAWD_COLORS))
+        self.assertEqual(opt["default"], "classic")
+        self.assertEqual(len(opt["options"]), 12)
+        for hexv in self.common.CLAWD_COLORS.values():
+            self.assertRegex(hexv, r"^#[0-9A-F]{6}$")
+
+    def test_classic_is_the_original_colour(self):
+        import statusline
+        self.assertEqual(self.common.body_rgb(self.common.coerce_config({})),
+                         (0xD9, 0x77, 0x57))
+
+    def test_bad_or_mixed_case_values(self):
+        coerce = self.common.coerce_config
+        self.assertEqual(coerce({"clawd_color": "rainbow"})["clawd_color"], "classic")
+        self.assertEqual(coerce({"clawd_color": " Blue "})["clawd_color"], "blue")
+        self.assertEqual(coerce({"clawd_color": 5})["clawd_color"], "classic")
+
+    def test_env_option_is_read(self):
+        os.environ["CLAUDE_PLUGIN_OPTION_CLAWD_COLOR"] = "teal"
+        try:
+            self.assertEqual(self.common.config_from_env()["clawd_color"], "teal")
+        finally:
+            del os.environ["CLAUDE_PLUGIN_OPTION_CLAWD_COLOR"]
+
+    def test_status_line_uses_the_colour(self):
+        self.common.write_atomic(self.common.config_path(),
+                                 json.dumps({"clawd_color": "green"}))
+        env = dict(os.environ, CLAWD_HOME=self.home, COLUMNS="120",
+                   COLORTERM="truecolor")
+        env.pop("NO_COLOR", None)
+        out = subprocess.run(
+            [sys.executable, os.path.join(ROOT, "scripts", "statusline.py")],
+            input=json.dumps({"session_id": "c"}), capture_output=True,
+            text=True, env=env).stdout
+        self.assertIn("\033[38;2;74;222;128m", out)
+        self.assertNotIn("\033[38;2;217;119;87m", out)
+
+    def test_window_payload_carries_the_colour(self):
+        sys.path.insert(0, os.path.join(ROOT, "companion"))
+        import server
+        self.common.write_atomic(self.common.config_path(),
+                                 json.dumps({"clawd_color": "pink"}))
+        self.assertEqual(server.snapshot()["color"], "#F472B6")
+        self.common.write_atomic(self.common.config_path(),
+                                 json.dumps({"clawd_color": "<script>"}))
+        self.assertEqual(server.snapshot()["color"], "#D97757")
+
+
+class TestModelColor(Base):
+    def run_sl(self, payload, extra=None):
+        env = dict(os.environ, CLAWD_HOME=self.home, COLUMNS="120",
+                   COLORTERM="truecolor")
+        env.pop("NO_COLOR", None)
+        env.update(extra or {})
+        return subprocess.run(
+            [sys.executable, os.path.join(ROOT, "scripts", "statusline.py")],
+            input=json.dumps(payload), capture_output=True, text=True, env=env).stdout
+
+    def config(self, **opts):
+        self.common.write_atomic(self.common.config_path(), json.dumps(opts))
+
+    def test_model_colour_wins_then_clawd_colour(self):
+        cfg = self.common.coerce_config({"clawd_color": "blue", "opus_color": "purple"})
+        self.assertEqual(self.common.body_hex(cfg, "opus"), "#A78BFA")
+        self.assertEqual(self.common.body_hex(cfg, "sonnet"), "#60A5FA")
+        self.assertEqual(self.common.body_hex(cfg, None), "#60A5FA")
+        self.assertEqual(self.common.body_hex(self.common.coerce_config({}), "haiku"), "#D97757")
+
+    def test_model_options_match_plugin_json(self):
+        with open(os.path.join(ROOT, ".claude-plugin", "plugin.json")) as f:
+            plugin = json.load(f)
+        for key in self.common.MODEL_COLOR_KEYS.values():
+            opt = plugin["userConfig"][key]
+            self.assertEqual(opt["options"], ["none"] + list(self.common.CLAWD_COLORS))
+            self.assertEqual(opt["default"], "none")
+        cfg = self.common.coerce_config({"haiku_color": "plaid"})
+        self.assertEqual(cfg["haiku_color"], "none")
+
+    def test_status_line_follows_the_model(self):
+        self.config(clawd_color="blue", haiku_color="green")
+        out = self.run_sl({"session_id": "m", "model": {"id": "claude-haiku-4-5"}})
+        self.assertIn("\033[38;2;74;222;128m", out)       # green
+        out = self.run_sl({"session_id": "m", "model": {"id": "claude-opus-5-5"}})
+        self.assertIn("\033[38;2;96;165;250m", out)       # blue: opus not set
+
+    def test_window_uses_the_shown_sessions_model(self):
+        sys.path.insert(0, os.path.join(ROOT, "companion"))
+        import server
+        self.config(clawd_color="blue", opus_color="red")
+        self.put("w", state="idle", updated=self.common.now())
+        self.assertEqual(server.snapshot()["color"], "#60A5FA")
+        self.run_sl({"session_id": "w", "model": {"id": "claude-opus-5-5"}})
+        self.assertEqual(self.common.session_model("w"), "opus")
+        self.assertEqual(server.snapshot()["color"], "#E04E4E")
+
+    def test_model_file_written_only_on_change_and_old_ones_cleared(self):
+        self.common.remember_model("a", "opus", at=1000.0)
+        path = self.common.model_path("a")
+        os.utime(path, (1.0, 1.0))
+        self.common.remember_model("a", "opus", at=1000.0)
+        self.assertEqual(os.path.getmtime(path), 1.0)       # unchanged, not rewritten
+        self.common.remember_model("b", "haiku", at=1.0 + self.common.MODEL_FILE_MAX_AGE + 5)
+        self.assertFalse(os.path.exists(path))
+        self.assertEqual(self.common.session_model("b"), "haiku")
+        self.common.remember_model("c", "gpt", at=1.0)
+        self.assertIsNone(self.common.session_model("c"))
+
+    def saved(self, **opts):
+        with open(os.path.join(self.claude_dir, "settings.json"), "w") as f:
+            json.dump({"pluginConfigs": {"clawd-companion@clawd-local": {"options": opts}}}, f)
+
+    def test_restart_notice_until_the_saved_value_is_in_use(self):
+        self.config(clawd_color="classic")
+        self.saved(clawd_color="purple")
+        out = self.run_sl({"session_id": "r"})
+        self.assertIn(self.common.RESTART_TEXT, out)
+        self.config(clawd_color="purple")
+        out = self.run_sl({"session_id": "r"})
+        self.assertNotIn("restart", out)
+
+    def test_no_notice_without_saved_options(self):
+        self.config(clawd_color="classic")
+        self.assertNotIn("restart", self.run_sl({"session_id": "r"}))
+        with open(os.path.join(self.claude_dir, "settings.json"), "w") as f:
+            f.write("{broken")
+        self.assertNotIn("restart", self.run_sl({"session_id": "r"}))
+
+    def test_notice_in_text_style(self):
+        self.config(status_style="text")
+        self.saved(status_style="text", clawd_color="teal")
+        out = self.run_sl({"session_id": "r"})
+        self.assertEqual(out.strip(), "clawd: " + self.common.RESTART_TEXT)
 
 
 class TestStatusLineProcess(Base):

@@ -23,6 +23,8 @@ PALETTE = {
     "S": (0xFB, 0xCF, 0x4F),   # sparkle
 }
 
+NOTICE_COLOR = (0xFB, 0xCF, 0x4F)
+
 LABEL_COLORS = {
     "thinking": (0xB7, 0x94, 0xF6),
     "confirm":  (0xFB, 0xCF, 0x4F),
@@ -277,8 +279,11 @@ def render_sprite(grid, truecolor=True, gapfree=False):
 # --- the status line ---------------------------------------------------------
 
 def build_lines(state, topic_label, thought, tick, truecolor, columns, message=None,
-                ready="ready", gapfree=False, sub=None):
-    """Assemble the two sprite rows plus the text column beside them."""
+                ready="ready", gapfree=False, sub=None, notice=None):
+    """Assemble the two sprite rows plus the text column beside them.
+
+    notice takes the second row when the state leaves it empty.
+    """
     grid = frame_for(state, tick)
     rows = render_sprite(grid, truecolor, gapfree)
 
@@ -305,6 +310,8 @@ def build_lines(state, topic_label, thought, tick, truecolor, columns, message=N
     width = (len(grid[0]) + 1) // 2
     budget = max(4, columns - width - 2 - SAFETY_MARGIN)
     label, second = _fit(label, budget), _fit(second, budget)
+    if notice and not second:
+        second = fg(NOTICE_COLOR, truecolor) + _fit(notice, budget) + RESET
 
     text = [fg(label_rgb, truecolor) + label + RESET, second]
     # Claude Code strips leading spaces from each status line row, which
@@ -325,8 +332,10 @@ def _fit(text, budget):
     return text[:max(0, budget - 1)] + "…"
 
 
-def text_line(state, topic_label, thought, message=None, ready="ready"):
+def text_line(state, topic_label, thought, message=None, ready="ready", notice=None):
     """The one line, no-escape-codes fallback."""
+    if notice and state in ("idle", "done", "welcome"):
+        return "clawd: " + notice
     if state == "thinking":
         return "clawd: thinking · " + (topic_label or "working").lower()
     if state == "confirm":
@@ -390,7 +399,11 @@ def main():
         stored = common.read_json(common.session_path(session_id), {})
         rec = common.expire(stored, cfg, at)
         state = rec.get("state", "idle")
-        ready = common.ready_phrase(stored, at, common.model_family(payload))
+        family = common.model_family(payload)
+        ready = common.ready_phrase(stored, at, family)
+        PALETTE["B"] = common.body_rgb(cfg, family)
+        common.remember_model(payload.get("session_id"), family, at)
+        notice = common.RESTART_TEXT if common.restart_pending(cfg) else None
         welcome = common.welcoming(rec, at)
 
         # Hydration is global. The server owns the timer when it is up; this
@@ -438,14 +451,14 @@ def main():
 
         style = cfg["status_style"]
         if no_color or style == "text" or (columns and columns < MIN_COLUMNS_FOR_SPRITE):
-            line = text_line(state, topic_label, thought, message, ready)
+            line = text_line(state, topic_label, thought, message, ready, notice)
             if columns:
                 line = _fit(line, max(1, columns - SAFETY_MARGIN))
             lines = [line]
         else:
             lines = build_lines(state, topic_label, thought, tick,
                                 truecolor_supported(), columns or 80, message, ready,
-                                gapfree_wanted(), sub)
+                                gapfree_wanted(), sub, notice)
         sys.stdout.write("\n".join(prefix + lines) + "\n")
         return 0
     except Exception:

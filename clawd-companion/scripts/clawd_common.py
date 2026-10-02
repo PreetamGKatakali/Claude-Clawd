@@ -29,7 +29,32 @@ DEFAULTS = {
     "port": 4756,
     "sound_enabled": False,
     "display_name": "",
+    "clawd_color": "classic",
+    "opus_color": "none",
+    "sonnet_color": "none",
+    "haiku_color": "none",
 }
+
+# Body colours for the clawd_color option. The names match the option list in
+# plugin.json; classic is the original colour.
+CLAWD_COLORS = {
+    "classic": "#D97757",
+    "coral":   "#F08A6C",
+    "red":     "#E04E4E",
+    "pink":    "#F472B6",
+    "purple":  "#A78BFA",
+    "blue":    "#60A5FA",
+    "teal":    "#2DD4BF",
+    "green":   "#4ADE80",
+    "yellow":  "#FACC15",
+    "brown":   "#A16A4A",
+    "gray":    "#A8A8AE",
+    "white":   "#F5F5F4",
+}
+
+# Per-model colour options. "none" means use clawd_color.
+MODEL_COLOR_KEYS = {"opus": "opus_color", "sonnet": "sonnet_color", "haiku": "haiku_color"}
+NO_MODEL_COLOR = "none"
 
 _NUMERIC = {
     "hydration_interval_minutes": (1, 1440),
@@ -145,6 +170,13 @@ def coerce_config(raw):
         cfg["status_style"] = DEFAULTS["status_style"]
     if cfg["window_mode"] not in ("tab", "app"):
         cfg["window_mode"] = DEFAULTS["window_mode"]
+    cfg["clawd_color"] = str(cfg["clawd_color"]).strip().lower()
+    if cfg["clawd_color"] not in CLAWD_COLORS:
+        cfg["clawd_color"] = DEFAULTS["clawd_color"]
+    for key in MODEL_COLOR_KEYS.values():
+        cfg[key] = str(cfg[key]).strip().lower()
+        if cfg[key] not in CLAWD_COLORS:
+            cfg[key] = NO_MODEL_COLOR
     # Not a plugin option: setup writes this when the user chooses to chain
     # onto a status line they already had.
     if isinstance(raw, dict) and isinstance(raw.get("chain_command"), str):
@@ -176,6 +208,23 @@ def user_name(cfg):
     """The name Clawd greets you with, or "" for none."""
     cfg = cfg or {}
     return clean_name(cfg.get("display_name")) or clean_name(cfg.get("setup_name"))
+
+
+def body_hex(cfg, family=None):
+    """Clawd's body colour as "#RRGGBB".
+
+    The colour set for the model family wins, then clawd_color, then classic.
+    """
+    cfg = cfg or {}
+    name = cfg.get(MODEL_COLOR_KEYS.get(family, ""))
+    if name not in CLAWD_COLORS:
+        name = cfg.get("clawd_color")
+    return CLAWD_COLORS.get(name) or CLAWD_COLORS["classic"]
+
+
+def body_rgb(cfg, family=None):
+    h = body_hex(cfg, family)
+    return (int(h[1:3], 16), int(h[3:5], 16), int(h[5:7], 16))
 
 
 def welcome_text(name):
@@ -500,6 +549,82 @@ def hydration_message(seed, name=""):
 
 HYDRATION_HEADLINE = "Time to Drink water!"
 HYDRATION_HEADLINE_NAMED = "Time to Drink water, %s!"
+
+
+def models_dir():
+    return os.path.join(base_dir(), "models")
+
+
+def model_path(session_id):
+    return os.path.join(models_dir(), safe_name(session_id) + ".json")
+
+
+MODEL_FILE_MAX_AGE = 2 * 86400
+
+
+def remember_model(session_id, family, at=None):
+    """Record a session's model family for the window, which never sees it.
+
+    The status line calls this every refresh, so it writes only on a change.
+    That is also when files from sessions gone for two days are cleared out.
+    Never raises.
+    """
+    if family not in MODEL_COLOR_KEYS or not session_id:
+        return
+    try:
+        path = model_path(session_id)
+        if (read_json(path, None) or {}).get("family") == family:
+            return
+        os.makedirs(models_dir(), exist_ok=True)
+        write_atomic(path, json.dumps({"family": family}))
+        at = now() if at is None else at
+        for name in os.listdir(models_dir()):
+            old = os.path.join(models_dir(), name)
+            if old != path and at - os.path.getmtime(old) > MODEL_FILE_MAX_AGE:
+                os.remove(old)
+    except Exception:
+        pass
+
+
+def session_model(session_id):
+    """The model family the status line last saw for a session, or None."""
+    if not session_id:
+        return None
+    family = (read_json(model_path(session_id), None) or {}).get("family")
+    return family if family in MODEL_COLOR_KEYS else None
+
+
+# --- "restart to apply" ------------------------------------------------------
+#
+# Claude Code saves plugin options into settings.json under pluginConfigs
+# (seen in a live settings file, not documented). The hooks only see the new
+# values after a restart, so while the saved values and the ones in use differ
+# the status line says so. If the layout ever changes this finds nothing and
+# the message just never shows.
+
+RESTART_TEXT = "Clawd settings saved · restart Claude Code to apply"
+
+
+def saved_plugin_options():
+    """This plugin's options as last saved by /plugin, or {}."""
+    settings = read_json(os.path.join(config_dir(), "settings.json"), None)
+    configs = settings.get("pluginConfigs") if isinstance(settings, dict) else None
+    if not isinstance(configs, dict):
+        return {}
+    for key, entry in configs.items():
+        if str(key).split("@")[0] == "clawd-companion" and isinstance(entry, dict):
+            opts = entry.get("options")
+            return opts if isinstance(opts, dict) else {}
+    return {}
+
+
+def restart_pending(cfg, saved=None):
+    """True when a saved option differs from the value in use."""
+    saved = saved_plugin_options() if saved is None else saved
+    if not saved:
+        return False
+    wanted = coerce_config(saved)
+    return any(key in DEFAULTS and wanted[key] != cfg.get(key) for key in saved)
 
 
 def global_path():

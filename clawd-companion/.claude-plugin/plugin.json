@@ -1,7 +1,7 @@
 {
   "name": "clawd-companion",
   "displayName": "Clawd Companion",
-  "version": "0.1.8",
+  "version": "0.1.10",
   "description": "An animated mascot that reacts to Claude Code in a small local window and in the status line. Local only.",
   "author": { "name": "clawd-companion" },
   "license": "MIT",
@@ -12,6 +12,34 @@
       "title": "Your name",
       "description": "What Clawd calls you in the welcome and the water reminder. Leave empty to use the name setup asked for, or none.",
       "default": ""
+    },
+    "clawd_color": {
+      "type": "string",
+      "title": "Clawd colour",
+      "description": "Clawd's body colour in the status line and the companion window. A colour set for the model you use wins over this one.",
+      "options": ["classic", "coral", "red", "pink", "purple", "blue", "teal", "green", "yellow", "brown", "gray", "white"],
+      "default": "classic"
+    },
+    "opus_color": {
+      "type": "string",
+      "title": "Opus colour",
+      "description": "Clawd's colour while you use a Opus model. none uses Clawd colour.",
+      "options": ["none", "classic", "coral", "red", "pink", "purple", "blue", "teal", "green", "yellow", "brown", "gray", "white"],
+      "default": "none"
+    },
+    "sonnet_color": {
+      "type": "string",
+      "title": "Sonnet colour",
+      "description": "Clawd's colour while you use a Sonnet model. none uses Clawd colour.",
+      "options": ["none", "classic", "coral", "red", "pink", "purple", "blue", "teal", "green", "yellow", "brown", "gray", "white"],
+      "default": "none"
+    },
+    "haiku_color": {
+      "type": "string",
+      "title": "Haiku colour",
+      "description": "Clawd's colour while you use a Haiku model. none uses Clawd colour.",
+      "options": ["none", "classic", "coral", "red", "pink", "purple", "blue", "teal", "green", "yellow", "brown", "gray", "white"],
+      "default": "none"
     },
     "hydration_interval_minutes": {
       "type": "number",

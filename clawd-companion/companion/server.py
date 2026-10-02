@@ -160,6 +160,9 @@ def snapshot():
         # user's choice: the name to greet, already cleaned. Never leaves
         # 127.0.0.1, like everything else here.
         "name": common.user_name(cfg),
+        # Also the user's choice: Clawd's body colour, one of a fixed list,
+        # for the model of the session shown (the status line records it).
+        "color": common.body_hex(cfg, common.session_model(merged.get("session_id"))),
         "updated": merged.get("updated", at),
         "now": at,
         "sound_enabled": bool(cfg.get("sound_enabled")),

@@ -35,6 +35,10 @@ window can greet you. It is cleaned first (letters, digits, spaces, `-`, `'`
 and `.` only, at most 20 characters), comes only from your own settings, and
 like the rest of the payload is served on 127.0.0.1 alone.
 
+A second one: Clawd's **colour**, as a `#RRGGBB` value from the fixed list
+behind the `clawd_color` option. Anything not on that list falls back to
+`classic`.
+
 ## Install
 
 ### From GitHub
@@ -133,6 +137,8 @@ status line are separate processes that never receive those variables.
 | `auto_open` | boolean | `false` | Start the server and open the window at session start |
 | `port` | number, 1024–65535 | `4756` | Preferred port on 127.0.0.1; the next free one is used if busy |
 | `sound_enabled` | boolean | `false` | Show the "Enable sound" button. Still needs a click and browser permission |
+| `clawd_color` | `classic` \| `coral` \| `red` \| `pink` \| `purple` \| `blue` \| `teal` \| `green` \| `yellow` \| `brown` \| `gray` \| `white` | `classic` | Clawd's body colour in the status line and the window. `white` is hard to see on a light theme |
+| `opus_color`, `sonnet_color`, `haiku_color` | `none` or any `clawd_color` value | `none` | Clawd's colour while you use that model family. `none` uses `clawd_color` |
 | `display_name` | text | empty | Your name, for "hey <name>, welcome!" and "Time to Drink water, <name>!" Wins over the name setup asked for |
 
 Values out of range are clamped rather than rejected, and a missing or corrupt
@@ -142,6 +148,21 @@ Values out of range are clamped rather than rejected, and a missing or corrupt
 Multi-row output with escape codes is the most fragile part of this plugin, and
 that switch is one flip away. It also falls back to one plain line automatically
 when `NO_COLOR` is set or when `COLUMNS` is under 32.
+
+**Colour.** Clawd's colour comes from the model you are using first: if the
+option for that family (`opus_color`, `sonnet_color`, `haiku_color`) is set, it
+wins. Otherwise `clawd_color` is used, and `classic` if nothing is set. The
+status line reads the model from its own input, so the colour follows `/model`
+within about a second. The window never sees the model, so the status line
+writes each session's model family (`opus`, `sonnet` or `haiku`, nothing else)
+to `models/<session>.json`, and the window colours Clawd for the session it is
+showing. Files from sessions gone for two days are removed.
+
+**Restart notice.** Changed options reach the hooks only after Claude Code
+restarts. Until then the second status line row says "Clawd settings saved ·
+restart Claude Code to apply", and it goes away once the new values are in use.
+To notice the change, the status line reads this plugin's saved options from
+`pluginConfigs` in `~/.claude/settings.json` (only that entry, read only).
 
 **Your name.** Setup asks what Clawd should call you and saves it in
 `config.json` (change it with `install.py name --set NAME` or `--clear`). The
@@ -312,6 +333,8 @@ Verified against the docs at `code.claude.com/docs` and against Claude Code
 | `COLORTERM` reaches the **status line** process | **UNVERIFIED** | The status line runs as a separate process. The docs promise only `COLUMNS` and `LINES` there. The code degrades to 256-color if it is absent, so a wrong guess costs color fidelity, nothing else |
 | `TERM_PROGRAM` reaches the status line process, and reverse video (`\e[7m`) survives Claude Code's rendering | **Verified** | Live run in a pty with `TERM_PROGRAM=Apple_Terminal`: the script logged the variable, and the terminal received `\e[7m` cells. The gap measurement (block glyph 1000 units, row 1193 units in SF Mono Terminal) was read from the font with Core Text. Other Terminal.app fonts or line spacing may differ |
 | The status line input carries `model.id` and `model.display_name`, and they follow `/model` | **Verified** | Live run on 2026-10-01: `/model haiku`, `/model opus` and `/model sonnet` in a real session; the script received `claude-haiku-4-5-20251001`, `claude-opus-5-5` and `claude-sonnet-5-5` within about a second of each. Ids from Bedrock, Vertex or custom aliases were not tested; one without `opus`, `sonnet` or `haiku` in it gets the Sonnet phrases |
+| `/plugin` saves options in `settings.json` under `pluginConfigs` → `clawd-companion@<marketplace>` → `options` | **UNVERIFIED** | Seen in a live settings file on 2026-10-02 after saving `clawd_color` in `/plugin`; not found in the docs. If the layout changes, the restart notice never shows and nothing else is affected |
+| A saved option reaches the hooks only after a restart | **UNVERIFIED** | Not tested. A `/reload-plugins` may already be enough, in which case the notice is overcautious |
 | Exec-form hooks (`args` present) run with no shell | **Verified (docs)** | Hooks reference, "Exec form and shell form" |
 | A plugin's `settings.json` cannot set `statusLine` | **Verified (docs)** | Only `agent` and `subagentStatusLine` take effect |
 | `statusLine.refreshInterval` minimum is 1 second | **Verified (docs)** | Status line reference |
