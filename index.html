@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Clawd Companion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one centred column of "stages", each a self-contained scene to film, pixel Clawd drawn live on canvas. Single dark look by choice, like a terminal. */
+:root {
+  --bg: #151413;
+  --surface: #1e1c1a;
+  --surface-2: #272421;
+  --line: #34302c;
+  --fg: #f3efe9;
+  --muted: #a8a19a;
+  --clawd: #d97757;
+  --gold: #fbcf4f;
+  --ok: #4ade80;
+  --think: #a78bfa;
+  --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 16px; line-height: 1.55; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 56px 20px 80px; display: grid; gap: 88px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; font-weight: 600; letter-spacing: -0.02em; }
+h2 { font-size: clamp(26px, 3.4vw, 36px); }
+h3 { font-size: 17px; letter-spacing: -0.01em; }
+p { margin: 0; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--clawd); }
+.lede { color: var(--muted); max-width: 60ch; font-size: 17px; }
+.head { display: grid; gap: 10px; }
+.mono { font-family: var(--mono); }
+canvas { image-rendering: pixelated; display: block; max-width: 100%; }
+
+/* hero */
+.hero { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; align-items: center; }
+.hero h1 { font-size: clamp(40px, 6.4vw, 72px); line-height: 1.02; letter-spacing: -0.035em; }
+.hero h1 span { color: var(--clawd); transition: color .3s; }
+.hero-copy { display: grid; gap: 20px; min-width: 0; }
+.stage { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 36px 24px 24px; display: grid; justify-items: center; gap: 18px; }
+.stage .caption { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.stage .caption b { color: var(--fg); font-weight: 500; }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { font-family: var(--mono); font-size: 12px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.pill i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); margin-right: 7px; vertical-align: 1px; }
+
+/* states */
+.states { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.state { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px 20px; display: grid; gap: 14px; align-content: start; min-width: 0; }
+.state .sprite-box { height: 72px; display: flex; align-items: center; }
+.state .when { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.state p { color: var(--muted); font-size: 14.5px; }
+.state .say { font-family: var(--mono); font-size: 13px; color: var(--fg); background: var(--surface-2); border-radius: 8px; padding: 8px 10px; }
+
+/* colours */
+.swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+.swatch { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 10px 12px; display: grid; justify-items: center; gap: 10px; cursor: pointer; font: inherit; color: inherit; transition: border-color .2s, transform .2s; }
+.swatch:hover { transform: translateY(-2px); }
+.swatch:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.swatch[aria-pressed="true"] { border-color: var(--fg); }
+.swatch .nm { font-size: 13.5px; font-weight: 500; }
+.swatch .hx { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.models { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px; display: grid; gap: 14px; align-content: start; min-width: 0; }
+.card p { color: var(--muted); font-size: 14.5px; }
+.chain { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-family: var(--mono); font-size: 13px; }
+.chain span { background: var(--surface-2); border-radius: 8px; padding: 6px 10px; }
+.chain em { font-style: normal; color: var(--muted); }
+.model-row { display: grid; grid-template-columns: 74px 1fr auto; gap: 12px; align-items: center; font-size: 14.5px; }
+.model-row .mono { font-size: 12.5px; color: var(--muted); }
+
+/* homes */
+.homes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.term { background: #0d0c0b; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-family: var(--mono); font-size: 12.5px; color: var(--muted); display: grid; gap: 8px; overflow: hidden; }
+.term .prompt { color: var(--fg); }
+.sl { display: flex; align-items: center; gap: 12px; }
+.sl .txt { line-height: 1.35; }
+.sl .txt b { color: var(--fg); font-weight: 500; }
+.win { background: var(--surface-2); border-radius: 12px; padding: 16px; display: grid; gap: 10px; justify-items: center; }
+.win .top { width: 100%; display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; color: var(--muted); }
+.win .top b { color: var(--gold); font-weight: 500; }
+.win .bubble { background: var(--surface); border: 1.5px solid var(--think); border-radius: 12px; padding: 8px 12px; font-size: 12.5px; color: var(--fg); }
+.menubar { background: #2b2a33; border-radius: 8px; padding: 6px 10px; display: flex; justify-content: flex-end; align-items: center; gap: 12px; font-size: 12px; color: #e8e6ef; }
+.menubar .ic { width: 13px; height: 13px; border-radius: 3px; background: #9b98aa; opacity: .8; }
+.menubar .clk { font-variant-numeric: tabular-nums; }
+.notif { background: #2e2c34; border: 1px solid #45424e; border-radius: 14px; padding: 12px 14px; display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: center; font-size: 12.5px; color: #e8e6ef; }
+.notif .ico { width: 34px; height: 34px; border-radius: 8px; background: #1b1a1f; display: grid; place-items: center; }
+.notif b { display: block; font-size: 13px; }
+.notif span { color: #b8b5c3; }
+.tag { font-family: var(--mono); font-size: 11px; color: var(--gold); border: 1px solid #5b4a1e; border-radius: 6px; padding: 2px 6px; justify-self: start; }
+
+/* commands */
+.cmds { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cmd { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; display: grid; gap: 6px; min-width: 0; }
+.cmd code { font-family: var(--mono); font-size: 15px; color: var(--clawd); word-break: break-word; }
+.cmd p { color: var(--muted); font-size: 14.5px; }
+
+/* reminders */
+.rem { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.big { font-family: var(--mono); font-size: 34px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.big small { font-size: 14px; color: var(--muted); margin-left: 4px; }
+.phrase { font-family: var(--mono); font-size: 13.5px; background: var(--surface-2); border-radius: 8px; padding: 8px 10px; min-height: 2.4em; transition: opacity .25s; }
+.notice { font-family: var(--mono); font-size: 13px; color: var(--gold); }
+
+/* settings + privacy */
+.opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.opts span { font-family: var(--mono); font-size: 12.5px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color: var(--muted); }
+.opts span b { color: var(--fg); font-weight: 500; }
+.privacy { border-top: 1px solid var(--line); padding-top: 28px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+.privacy div { display: grid; gap: 4px; }
+.privacy b { font-size: 14.5px; font-weight: 500; }
+.privacy span { color: var(--muted); font-size: 13.5px; }
+
+@media (max-width: 860px) {
+  .hero, .models, .cmds, .rem { grid-template-columns: 1fr; }
+  .states, .homes { grid-template-columns: 1fr 1fr; }
+  .swatches { grid-template-columns: repeat(4, 1fr); }
+  .privacy { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 520px) {
+  .states, .homes, .privacy { grid-template-columns: 1fr; }
+  .swatches { grid-template-columns: repeat(3, 1fr); }
+  .wrap { gap: 64px; padding-block: 40px 64px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .swatch, .hero h1 span, .phrase { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<main class="wrap">
+
+  <section class="hero">
+    <div class="hero-copy">
+      <div class="eyebrow">A Claude Code plugin</div>
+      <h1>Meet <span id="heroName">Clawd</span>, your pixel coding buddy.</h1>
+      <p class="lede">Clawd sits in your status line, a small window and your Mac menu bar. It reacts to what Claude Code is doing, tells you when it needs your OK, and reminds you to drink water.</p>
+      <div class="pills">
+        <span class="pill"><i></i>Runs only on your machine</span>
+        <span class="pill">Python, no dependencies</span>
+        <span class="pill">MIT licensed</span>
+      </div>
+    </div>
+    <div class="stage">
+      <canvas id="hero" width="352" height="128" aria-label="Clawd, animated"></canvas>
+      <div class="caption" id="heroCap"><b>idle</b> · ready for next task</div>
+    </div>
+  </section>
+
+  <section class="head" style="gap:28px">
+    <div class="head">
+      <div class="eyebrow">What Clawd does</div>
+      <h2>Six moods, one glance</h2>
+      <p class="lede">Clawd changes pose with every step of your session, so you know what Claude is up to without reading a line.</p>
+    </div>
+    <div class="states">
+      <div class="state"><div class="sprite-box"><canvas data-frames="WAVE_A,WAVE_B" data-px="4"></canvas></div><h3>Hello</h3><div class="when">when you start claude</div><div class="say">hey &lt;name&gt;, welcome!</div></div>
+      <div class="state"><div class="sprite-box"><canvas data-frames="BASE,BASE,BASE,BLINK" data-px="4"></canvas></div><h3>Ready</h3><div class="when">waiting for your prompt</div><div class="say">ready for next task</div></div>
+      <div class="state"><div class="sprite-box"><canvas data-frames="THINK_A,THINK_B" data-px="4"></canvas></div><h3>Thinking</h3><div class="when">while Claude works</div><div class="say">thinking · debugging</div></div>
+      <div class="state"><div class="sprite-box"><canvas data-frames="ARM_UP,BASE" data-px="4" data-badge="1"></canvas></div><h3>Needs your OK</h3><div class="when">permission prompt open</div><div class="say">claude-clawd · permission request</div></div>
+      <div class="state"><div class="sprite-box"><canvas data-frames="HYD_A,HYD_B" data-px="4"></canvas></div><h3>Water break</h3><div class="when">every 45 minutes</div><div class="say">Time to Drink water!</div></div>
+      <div class="state"><div class="sprite-box"><canvas data-frames="HAPPY,DONE_B" data-px="4"></canvas></div><h3>Done</h3><div class="when">when Claude finishes</div><div class="say">done!</div></div>
+    </div>
+    <p class="lede" style="font-size:15px">While thinking, Clawd also names the kind of task: Debugging, Refactor, Tests, Explain, Git, Deploy, Security, Docs, Performance, UI, Data or Big task. It works that out from keywords. Your prompt is never saved.</p>
+  </section>
+
+  <section class="head" style="gap:28px">
+    <div class="head">
+      <div class="eyebrow">Colours</div>
+      <h2>12 colours. Tap one to try it.</h2>
+      <p class="lede">Pick Clawd's colour in <span class="mono">/plugin</span>. It changes the status line, the window and the menu bar together.</p>
+    </div>
+    <div class="swatches" id="swatches"></div>
+    <div class="models">
+      <div class="card">
+        <h3>A colour for each model</h3>
+        <p>Give Opus, Sonnet and Haiku their own colour, and Clawd switches when you change <span class="mono">/model</span>.</p>
+        <div class="model-row"><canvas data-frames="BASE" data-px="3" data-color="#A78BFA"></canvas><span>Opus</span><span class="mono">opus_color</span></div>
+        <div class="model-row"><canvas data-frames="BASE" data-px="3" data-color="#60A5FA"></canvas><span>Sonnet</span><span class="mono">sonnet_color</span></div>
+        <div class="model-row"><canvas data-frames="BASE" data-px="3" data-color="#2DD4BF"></canvas><span>Haiku</span><span class="mono">haiku_color</span></div>
+      </div>
+      <div class="card">
+        <h3>Which colour wins</h3>
+        <p>The model's colour comes first. If it is set to <span class="mono">none</span>, Clawd uses your main colour, and classic if nothing is set.</p>
+        <div class="chain"><span>model colour</span><em>→</em><span>Clawd colour</span><em>→</em><span>classic</span></div>
+        <p>The example colours on the left are just one setup. Every model can use any of the 12.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="head" style="gap:28px">
+    <div class="head">
+      <div class="eyebrow">Where Clawd lives</div>
+      <h2>Three places, same Clawd</h2>
+    </div>
+    <div class="homes">
+      <div class="card">
+        <h3>Status line</h3>
+        <div class="term">
+          <div class="prompt">› fix the failing login test</div>
+          <div class="sl"><canvas data-frames="THINK_A,THINK_B" data-px="3"></canvas><div class="txt"><b>thinking · debugging</b><br>tracing the failing assertion</div></div>
+        </div>
+        <p>A two-row pixel Clawd under your prompt, in any terminal. A plain text style is one switch away.</p>
+      </div>
+      <div class="card">
+        <h3>Companion window</h3>
+        <div class="win">
+          <div class="top"><span>CLAWD</span><b>● NEEDS YOUR OK</b></div>
+          <canvas data-frames="ARM_UP,BASE" data-px="5" data-badge="1"></canvas>
+          <div class="bubble">Claude needs your OK.</div>
+        </div>
+        <p>A small page beside your terminal that keeps animating while a permission prompt is open.</p>
+      </div>
+      <div class="card">
+        <h3>Mac menu bar</h3>
+        <div class="menubar"><canvas data-frames="ARM_UP,BASE" data-px="2" data-badge="1"></canvas><span>needs you</span><i class="ic"></i><i class="ic"></i><span class="clk">1:04 PM</span></div>
+        <div class="notif"><div class="ico"><canvas data-frames="BASE" data-px="2"></canvas></div><div><b>Clawd needs your approval</b><span>Claude Code is waiting for you in claude-clawd.</span></div></div>
+        <span class="tag">macOS only</span>
+        <p>Click the notification to jump back to your terminal.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="head" style="gap:28px">
+    <div class="head">
+      <div class="eyebrow">Commands</div>
+      <h2>Four commands, that's it</h2>
+    </div>
+    <div class="cmds">
+      <div class="cmd"><code>/clawd-companion:setup</code><p>Installs the status line, asks what Clawd should call you, and backs up your settings first.</p></div>
+      <div class="cmd"><code>/clawd-companion:open</code><p>Opens the companion window beside your terminal.</p></div>
+      <div class="cmd"><code>/clawd-companion:stop</code><p>Closes the window's server and the menu bar Clawd.</p></div>
+      <div class="cmd"><code>/clawd-companion:uninstall</code><p>Removes Clawd and puts your old status line back.</p></div>
+    </div>
+    <p class="lede" style="font-size:15px">Every setting lives in <span class="mono">/plugin</span> → clawd-companion → Configure.</p>
+  </section>
+
+  <section class="head" style="gap:28px">
+    <div class="head">
+      <div class="eyebrow">Reminders and notices</div>
+      <h2>Small nudges, never in the way</h2>
+    </div>
+    <div class="rem">
+      <div class="card">
+        <h3>Drink water</h3>
+        <div class="big">45<small>min</small> · 20<small>sec</small></div>
+        <p>Every 45 minutes Clawd holds up a glass for 20 seconds. Set both to whatever you like. It never interrupts a permission prompt.</p>
+        <div class="phrase" id="water">Time to Drink water, &lt;name&gt;! · One glass. Then back to it.</div>
+      </div>
+      <div class="card">
+        <h3>Approval alerts</h3>
+        <div class="big">1<small>tap</small></div>
+        <p>When Claude Code needs your OK, Clawd waves and turns gold. On a Mac you also get a notification that takes you back to the terminal.</p>
+      </div>
+      <div class="card">
+        <h3>Idle phrases, by model</h3>
+        <p>While you think, Clawd talks. Each model has its own personality.</p>
+        <div class="model-row" style="grid-template-columns:64px 1fr"><span class="mono">Opus</span><div class="phrase" data-list="opus"></div></div>
+        <div class="model-row" style="grid-template-columns:64px 1fr"><span class="mono">Sonnet</span><div class="phrase" data-list="sonnet"></div></div>
+        <div class="model-row" style="grid-template-columns:64px 1fr"><span class="mono">Haiku</span><div class="phrase" data-list="haiku"></div></div>
+      </div>
+      <div class="card">
+        <h3>Settings saved</h3>
+        <p>Change a setting and the status line tells you when a restart is needed, then clears itself.</p>
+        <div class="term"><div class="sl"><canvas data-frames="BASE,BASE,BASE,BLINK" data-px="3"></canvas><div class="txt"><b>ready for next task</b><br><span class="notice">Clawd settings saved · restart Claude Code to apply</span></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="head" style="gap:20px">
+    <div class="head">
+      <div class="eyebrow">Settings</div>
+      <h2>Make it yours</h2>
+    </div>
+    <div class="opts">
+      <span><b>Your name</b> greeting</span>
+      <span><b>Clawd colour</b> 12 options</span>
+      <span><b>Opus / Sonnet / Haiku colour</b></span>
+      <span><b>Water reminder</b> 1–1440 min</span>
+      <span><b>Reminder length</b> 3–300 sec</span>
+      <span><b>Status line style</b> sprite · text · off</span>
+      <span><b>Window</b> tab · app</span>
+      <span><b>Open window on start</b></span>
+      <span><b>Menu bar Clawd</b> macOS</span>
+      <span><b>Port</b> 127.0.0.1</span>
+    </div>
+  </section>
+
+  <footer class="privacy">
+    <div><b>Local only</b><span>Nothing leaves your machine. No telemetry, no cloud.</span></div>
+    <div><b>Prompts stay private</b><span>Read once to pick a topic, never saved.</span></div>
+    <div><b>Never blocks Claude</b><span>Hooks print nothing and can't approve or deny.</span></div>
+    <div><b>Original art</b><span>Clawd is drawn pixel by pixel for this plugin.</span></div>
+  </footer>
+</main>
+
+<script>
+(function () {
+  var GRIDS = {
+    BASE:    ["..BBBBBBBBBB..", "..BB.BBBB.BB..", "BBBBBBBBBBBBBB", "..B.B....B.B.."],
+    BLINK:   ["..BBBBBBBBBB..", "..BBBBBBBBBB..", "BBBBBBBBBBBBBB", "..B.B....B.B.."],
+    THINK_A: ["..BBBBBBBBBB..", "..B.BBBB.BBB..", "BBBBBBBBBBBBBB", "..B.B....B.B.."],
+    THINK_B: ["..BBBBBBBBBB..", "..BBB.BBBB.B..", "BBBBBBBBBBBBBB", "..B.B....B.B.."],
+    ARM_UP:  ["..BBBBBBBBBB.B", "..BB.BBBB.BBBB", "BBBBBBBBBBBB..", "..B.B....B.B.."],
+    HAPPY:   ["B.BBBBBBBBBB.B", "BBBB.BBBB.BBBB", "..BBBBBBBBBB..", "..B.B....B.B.."],
+    DONE_B:  ["S.BBBBBBBBBB.S", "..BB.BBBB.BB..", "BBBBBBBBBBBBBB", "..B.B....B.B.."],
+    WAVE_A:  ["..BBBBBBBBBB.B..", "..BB.BBBB.BBBB..", "BBBBBBBBBBBB....", "..B.B....B.B...."],
+    WAVE_B:  ["..BBBBBBBBBB..BB", "..BB.BBBB.BB.BB.", "BBBBBBBBBBBBBB..", "..B.B....B.B...."],
+    HYD_A:   ["..BBBBBBBBBB.....G..G.", "..BB.BBBB.BB.....GWWG.", "BBBBBBBBBBBBBB...GWWG.", "..B.B....B.B.....GWWG."],
+    HYD_B:   ["..BBBBBBBBBB.....G..G.", "..BB.BBBB.BB.....G..G.", "BBBBBBBBBBBBBB...GWWG.", "..B.B....B.B.....GWWG."]
+  };
+  var EXTRA = { S: "#FBCF4F", G: "#818CF8", W: "#C7D2FE" };
+  var COLORS = [
+    ["classic", "#D97757"], ["coral", "#F08A6C"], ["red", "#E04E4E"], ["pink", "#F472B6"],
+    ["purple", "#A78BFA"], ["blue", "#60A5FA"], ["teal", "#2DD4BF"], ["green", "#4ADE80"],
+    ["yellow", "#FACC15"], ["brown", "#A16A4A"], ["gray", "#A8A8AE"], ["white", "#F5F5F4"]
+  ];
+  var PHRASES = {
+    opus: ["ready for a hard problem", "thinking in first principles", "edge cases already listed", "proof first, code second", "weighing the tradeoffs", "assumptions checked twice", "one more step of reasoning", "big picture loaded"],
+    sonnet: ["ready for next task", "tests green, mood green", "no bugs, only features", "coffee loaded, brain compiling", "git commit -m \"progress\"", "it works on my machine", "ship it, then polish", "one bug at a time", "refactor later, maybe", "semicolons in place"],
+    haiku: ["ready... ish", "five more minutes", "low battery, still here", "short tasks only please", "doing the bare minimum", "napping between prompts", "fast, not fancy", "yawn... send it over"]
+  };
+  var WATER = [
+    ["Drink some water.", "One glass. Then back to it."], ["Time for a glass.", "Your code will wait."],
+    ["Water break.", "Stand up while you are at it."], ["Hydrate.", "Small habit. Real difference."],
+    ["Refill the glass.", "Then pick up where you left off."]
+  ];
+  var HERO_STATES = [
+    ["WAVE_A,WAVE_B", "hello", "hey <name>, welcome!"],
+    ["BASE,BASE,BASE,BLINK", "idle", "ready for next task"],
+    ["THINK_A,THINK_B", "thinking", "debugging · tracing the failing assertion"],
+    ["ARM_UP,BASE", "needs your OK", "claude-clawd · permission request", 1],
+    ["HYD_A,HYD_B", "water break", "Time to Drink water!"],
+    ["HAPPY,DONE_B", "done", "all tests passing"]
+  ];
+  var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var body = "#D97757";
+
+  function draw(cv, name, color, px, badge) {
+    var g = GRIDS[name] || GRIDS.BASE;
+    var w = g[0].length * px + (badge ? px * 3 : 0), h = g.length * px;
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    var c = cv.getContext("2d");
+    c.clearRect(0, 0, w, h);
+    for (var r = 0; r < g.length; r++) for (var x = 0; x < g[r].length; x++) {
+      var ch = g[r][x];
+      if (ch === ".") continue;
+      c.fillStyle = EXTRA[ch] || color;
+      c.fillRect(x * px, r * px, px, px);
+    }
+    if (badge) {
+      c.fillStyle = EXTRA.S;
+      c.beginPath(); c.arc(w - px, px, px, 0, Math.PI * 2); c.fill();
+    }
+  }
+
+  var sprites = Array.prototype.map.call(document.querySelectorAll("canvas[data-frames]"), function (cv) {
+    return { cv: cv, frames: cv.dataset.frames.split(","), px: +cv.dataset.px || 4,
+             badge: !!cv.dataset.badge, fixed: cv.dataset.color || null };
+  });
+
+  // hero: a big Clawd that walks through every state
+  var hero = document.getElementById("hero"), heroCap = document.getElementById("heroCap");
+  var heroState = 1;
+
+  // swatches
+  var sw = document.getElementById("swatches");
+  COLORS.forEach(function (c, i) {
+    var b = document.createElement("button");
+    b.className = "swatch"; b.type = "button";
+    b.setAttribute("aria-pressed", i === 0 ? "true" : "false");
+    b.innerHTML = '<canvas data-frames="BASE,BASE,BASE,BLINK" data-px="3"></canvas><span class="nm"></span><span class="hx"></span>';
+    b.querySelector(".nm").textContent = c[0];
+    b.querySelector(".hx").textContent = c[1];
+    var cv = b.querySelector("canvas");
+    sprites.push({ cv: cv, frames: ["BASE", "BASE", "BASE", "BLINK"], px: 3, badge: false, fixed: c[1], offset: i });
+    b.addEventListener("click", function () {
+      body = c[1];
+      document.getElementById("heroName").style.color = c[1];
+      Array.prototype.forEach.call(sw.children, function (el) { el.setAttribute("aria-pressed", el === b ? "true" : "false"); });
+      tick(true);
+    });
+    sw.appendChild(b);
+  });
+
+  // rotating phrases
+  var phraseEls = document.querySelectorAll(".phrase[data-list]");
+  var water = document.getElementById("water");
+  function phrases(n) {
+    Array.prototype.forEach.call(phraseEls, function (el, i) {
+      var list = PHRASES[el.dataset.list];
+      el.textContent = list[(n + i) % list.length];
+    });
+    var w = WATER[n % WATER.length];
+    water.textContent = (n % 2 ? w[0] : "Time to Drink water, <name>!") + " · " + w[1];
+  }
+
+  var t = 0;
+  function tick(still) {
+    if (!still) t++;
+    var hs = HERO_STATES[heroState], hf = hs[0].split(",");
+    draw(hero, hf[t % hf.length], body, 16, !!hs[3]);
+    heroCap.innerHTML = "";
+    var b = document.createElement("b"); b.textContent = hs[1];
+    heroCap.appendChild(b); heroCap.appendChild(document.createTextNode(" · " + hs[2]));
+    sprites.forEach(function (s) {
+      var f = s.frames[(t + (s.offset || 0)) % s.frames.length];
+      draw(s.cv, f, s.fixed || body, s.px, s.badge);
+    });
+  }
+
+  phrases(0);
+  tick(true);
+  if (!reduce) {
+    setInterval(function () { tick(false); }, 500);
+    setInterval(function () { heroState = (heroState + 1) % HERO_STATES.length; }, 3000);
+    var p = 0;
+    setInterval(function () { phrases(++p); }, 2500);
+  }
+})();
+</script>
+</body>
+</html>
