@@ -37,6 +37,7 @@ INFO_PLIST = """<?xml version="1.0" encoding="UTF-8"?>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>1</string>
 <key>LSUIElement</key><true/>
+<key>NSAppleEventsUsageDescription</key><string>Clawd switches to the Terminal tab where Claude Code is waiting for your approval.</string>
 </dict></plist>
 """ % (BUNDLE_ID, APP_NAME)
 
@@ -224,6 +225,8 @@ def main(argv=None):
             "running": bool(running_pid()),
             "enabled": bool(common.load_config().get("menu_bar")),
             "app": app_path(),
+            # Written by the app: notification permission and the last alert's path.
+            "app_status": common.read_json(os.path.join(common.base_dir(), "menubar-status.json"), None),
         }, indent=2))
     else:
         print(__doc__)

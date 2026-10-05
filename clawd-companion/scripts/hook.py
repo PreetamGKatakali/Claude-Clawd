@@ -94,6 +94,12 @@ def _menu_bar(cfg):
         pass
 
 
+def _where(common, cfg, session_id, payload):
+    """Remember the app, tty and folder so a notification click can go back here."""
+    if sys.platform == "darwin" and cfg.get("menu_bar"):
+        common.remember_where(session_id, payload.get("cwd"))
+
+
 def handle(event, payload, common):
     cfg = common.refresh_config_from_env()
     common.ensure_dirs()
@@ -132,6 +138,7 @@ def handle(event, payload, common):
         if cfg.get("auto_open"):
             _auto_open(common, cfg)
         if cfg.get("menu_bar"):
+            _where(common, cfg, session_id, payload)
             _menu_bar(cfg)
 
     elif event == "UserPromptSubmit":
@@ -145,10 +152,12 @@ def handle(event, payload, common):
     elif event in ("PermissionRequest",):
         to("confirm")
         rec["turn_active"] = True
+        _where(common, cfg, session_id, payload)
 
     elif event == "Notification":
         if payload.get("notification_type") in CONFIRM_NOTIFICATIONS:
             to("confirm")
+            _where(common, cfg, session_id, payload)
         else:
             return  # nothing to record
 
@@ -165,6 +174,7 @@ def handle(event, payload, common):
             os.unlink(path)
         except OSError:
             pass
+        common.forget_where(session_id)
         return
 
     else:

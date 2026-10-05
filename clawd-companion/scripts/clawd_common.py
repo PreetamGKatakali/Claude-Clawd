@@ -9,6 +9,7 @@ an integer seed, a project folder name and timestamps -- nothing else.
 
 import json
 import os
+import sys
 import tempfile
 import time
 
@@ -483,6 +484,22 @@ def live_sessions(cfg, at=None):
     return out
 
 
+def waiting_sessions(records):
+    """Every session waiting for approval, oldest first: id and folder name only."""
+    out = []
+    for rec in records or []:
+        if rec.get("state") != "confirm" or not isinstance(rec.get("session_id"), str):
+            continue
+        try:
+            updated = float(rec.get("updated", 0))
+        except (TypeError, ValueError):
+            updated = 0
+        out.append((updated, {"session": rec["session_id"][:120],
+                              "project": clean_text(rec.get("project"))}))
+    out.sort(key=lambda pair: pair[0])
+    return [item for _, item in out]
+
+
 def merge_sessions(records, cfg, at=None):
     """Pick the highest-priority state across live sessions.
 
@@ -637,6 +654,113 @@ def session_model(session_id):
     return family if family in MODEL_COLOR_KEYS else None
 
 
+# --- where a session runs ----------------------------------------------------
+#
+# For the macOS menu bar: clicking an approval notification goes back to the
+# session that asked. Each session gets where/<session>.json holding the app it
+# runs in, its terminal device and its project folder. The full folder path is
+# kept only here, on this machine; the server never reads or sends these files.
+
+import re as _re
+
+_BUNDLE_RE = _re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]{0,127}$")
+_TTY_RE = _re.compile(r"^/dev/ttys[0-9]{1,4}$")
+# Editors whose integrated terminal sets TERM_PROGRAM=vscode: VS Code, Cursor,
+# VSCodium and other VS Code forks.
+EDITOR_TERM_PROGRAM = "vscode"
+
+
+def where_dir():
+    return os.path.join(base_dir(), "where")
+
+
+def where_path(session_id):
+    return os.path.join(where_dir(), safe_name(session_id) + ".json")
+
+
+def controlling_tty(start_pid=None, table=None):
+    """The terminal device of the nearest ancestor that has one, or None.
+
+    Hooks run with pipes for stdin and stdout, so they have no tty of their
+    own; `claude` above them does. One `ps` call lists the whole tree.
+    """
+    try:
+        if table is None:
+            import subprocess
+            out = subprocess.run(["ps", "-A", "-o", "pid=,ppid=,tty="],
+                                 capture_output=True, text=True, timeout=3).stdout
+            table = {}
+            for line in out.splitlines():
+                parts = line.split()
+                if len(parts) == 3:
+                    table[int(parts[0])] = (int(parts[1]), parts[2])
+        pid = os.getpid() if start_pid is None else start_pid
+        for _ in range(12):
+            if pid not in table:
+                return None
+            ppid, tty = table[pid]
+            if tty and tty not in ("??", "-"):
+                dev = "/dev/" + tty
+                return dev if _TTY_RE.match(dev) else None
+            if ppid <= 1:
+                return None
+            pid = ppid
+    except Exception:
+        return None
+    return None
+
+
+def project_root(cwd):
+    """The git repository root above cwd, else cwd itself. No subprocess."""
+    try:
+        path = os.path.abspath(cwd)
+        probe = path
+        while True:
+            if os.path.exists(os.path.join(probe, ".git")):
+                return probe
+            parent = os.path.dirname(probe)
+            if parent == probe:
+                return path
+            probe = parent
+    except Exception:
+        return None
+
+
+def remember_where(session_id, cwd, env=None, at=None):
+    """Record where a session runs. macOS only, never raises."""
+    if not session_id or not isinstance(cwd, str) or not os.path.isabs(cwd):
+        return None
+    env = os.environ if env is None else env
+    app = env.get("__CFBundleIdentifier", "")
+    info = {
+        "app": app if _BUNDLE_RE.match(app) else None,
+        "editor": env.get("TERM_PROGRAM") == EDITOR_TERM_PROGRAM,
+        "tty": controlling_tty(),
+        "root": project_root(cwd),
+    }
+    try:
+        path = where_path(session_id)
+        if read_json(path, None) == info:
+            return info
+        os.makedirs(where_dir(), exist_ok=True)
+        write_atomic(path, json.dumps(info))
+        at = now() if at is None else at
+        for name in os.listdir(where_dir()):
+            old = os.path.join(where_dir(), name)
+            if old != path and at - os.path.getmtime(old) > MODEL_FILE_MAX_AGE:
+                os.remove(old)
+    except Exception:
+        pass
+    return info
+
+
+def forget_where(session_id):
+    try:
+        os.unlink(where_path(session_id))
+    except OSError:
+        pass
+
+
 # --- "restart to apply" ------------------------------------------------------
 #
 # Claude Code saves plugin options into settings.json under pluginConfigs
@@ -668,6 +792,21 @@ def restart_pending(cfg, saved=None):
         return False
     wanted = coerce_config(saved)
     return any(key in DEFAULTS and wanted[key] != cfg.get(key) for key in saved)
+
+
+NOTIFY_OFF_TEXT = "Clawd can't notify you · allow Clawd Companion in System Settings → Notifications"
+
+
+def notifications_denied(cfg):
+    """True when the menu bar is on but macOS has denied its notifications.
+
+    The menu bar app writes menubar-status.json; "denied" stays until the user
+    allows it in System Settings, and the app rewrites the file every 10 s.
+    """
+    if not cfg.get("menu_bar") or sys.platform != "darwin":
+        return False
+    status = read_json(os.path.join(base_dir(), "menubar-status.json"), None) or {}
+    return status.get("notifications") == "denied"
 
 
 def global_path():

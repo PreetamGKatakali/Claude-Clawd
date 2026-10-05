@@ -1193,6 +1193,147 @@ class TestHardening(Base):
             sleeper.wait()
 
 
+class TestWhere(Base):
+    TABLE = {
+        500: (400, "??"),        # the hook (pipes, no tty)
+        400: (300, "??"),        # a shell in between
+        300: (200, "ttys007"),   # claude
+        200: (1, "ttys007"),
+    }
+
+    def test_tty_walks_up_to_the_first_ancestor_with_one(self):
+        self.assertEqual(self.common.controlling_tty(500, self.TABLE), "/dev/ttys007")
+
+    def test_tty_none_when_no_ancestor_has_one(self):
+        table = {500: (400, "??"), 400: (1, "??")}
+        self.assertIsNone(self.common.controlling_tty(500, table))
+        self.assertIsNone(self.common.controlling_tty(999, self.TABLE))
+
+    def test_tty_rejects_odd_names(self):
+        table = {500: (1, "ttys1; rm")}
+        self.assertIsNone(self.common.controlling_tty(500, table))
+
+    def test_real_tty_lookup_never_raises(self):
+        tty = self.common.controlling_tty()
+        self.assertTrue(tty is None or tty.startswith("/dev/ttys"))
+
+    def test_project_root_is_the_git_root(self):
+        repo = os.path.join(self.home, "repo")
+        sub = os.path.join(repo, "a", "b")
+        os.makedirs(sub)
+        os.makedirs(os.path.join(repo, ".git"))
+        self.assertEqual(self.common.project_root(sub), repo)
+        plain = os.path.join(self.home, "plain")
+        os.makedirs(plain)
+        self.assertEqual(self.common.project_root(plain), plain)
+
+    def test_remember_where_records_app_editor_and_root(self):
+        env = {"__CFBundleIdentifier": "com.todesktop.230313mzl4w4u92", "TERM_PROGRAM": "vscode"}
+        info = self.common.remember_where("s1", self.home, env)
+        self.assertEqual(info["app"], "com.todesktop.230313mzl4w4u92")
+        self.assertTrue(info["editor"])
+        self.assertEqual(info["root"], self.home)
+        self.assertEqual(self.common.read_json(self.common.where_path("s1")), info)
+
+    def test_remember_where_rejects_bad_input(self):
+        self.assertIsNone(self.common.remember_where("s1", "relative/path", {}))
+        self.assertIsNone(self.common.remember_where("", self.home, {}))
+        info = self.common.remember_where("s2", self.home, {"__CFBundleIdentifier": "bad id;x"})
+        self.assertIsNone(info["app"])
+        self.assertFalse(info["editor"])
+
+    def test_session_end_forgets_where(self):
+        self.common.remember_where("s3", self.home, {})
+        self.assertTrue(os.path.exists(self.common.where_path("s3")))
+        self.common.forget_where("s3")
+        self.assertFalse(os.path.exists(self.common.where_path("s3")))
+
+    def test_old_where_files_are_pruned(self):
+        self.common.remember_where("old", self.home, {})
+        old = self.common.where_path("old")
+        past = 1000.0
+        os.utime(old, (past, past))
+        self.common.remember_where("new", self.home, {}, at=past + 3 * 86400)
+        self.assertFalse(os.path.exists(old))
+
+    def test_server_never_sends_where_data(self):
+        self.put("s4", state="confirm", updated=2000.0)
+        self.common.remember_where("s4", "/Users/someone/secret-project", {})
+        os.environ["CLAWD_NOW"] = "2001"
+        sys.path.insert(0, os.path.join(ROOT, "companion"))
+        import server
+        snap = json.dumps(server.snapshot())
+        self.assertNotIn("secret-project", snap)
+        self.assertNotIn("/Users/", snap)
+        self.assertNotIn("tty", snap)
+
+    def test_waiting_lists_every_confirm_session_oldest_first(self):
+        self.put("b", state="confirm", project="api\x1b[2J", updated=2002.0, state_since=2002.0)
+        self.put("a", state="confirm", project="web", updated=2001.0, state_since=2001.0)
+        self.put("c", state="thinking", project="docs", updated=2003.0)
+        os.environ["CLAWD_NOW"] = "2004"
+        sys.path.insert(0, os.path.join(ROOT, "companion"))
+        import server
+        snap = server.snapshot()
+        self.assertEqual(snap["waiting"], [{"session": "a", "project": "web"},
+                                           {"session": "b", "project": "api[2J"}])
+        self.assertEqual(snap["state"], "confirm")
+
+    def test_expired_confirm_is_not_waiting(self):
+        self.put("old", state="confirm", updated=1000.0, state_since=1000.0)
+        cfg = self.common.load_config()
+        at = 1000.0 + cfg["confirm_ttl_minutes"] * 60 + 5
+        recs = self.common.live_sessions(cfg, at)
+        self.assertEqual(self.common.waiting_sessions(recs), [])
+
+    def _status(self, value):
+        self.common.write_atomic(os.path.join(self.home, "menubar-status.json"),
+                                 json.dumps({"notifications": value}))
+
+    def test_notice_when_notifications_denied(self):
+        on = self.common.coerce_config({"menu_bar": True})
+        self._status("denied")
+        self.assertEqual(self.common.notifications_denied(on), sys.platform == "darwin")
+        self.assertFalse(self.common.notifications_denied(self.common.coerce_config({})))
+        self._status("allowed")
+        self.assertFalse(self.common.notifications_denied(on))
+        os.remove(os.path.join(self.home, "menubar-status.json"))
+        self.assertFalse(self.common.notifications_denied(on))
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS only")
+    def test_status_line_shows_notifications_off(self):
+        self.common.write_atomic(self.common.config_path(), json.dumps({"menu_bar": True}))
+        self._status("denied")
+        env = dict(os.environ, CLAWD_HOME=self.home, COLUMNS="160")
+        env.pop("NO_COLOR", None)
+        run = lambda: subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "statusline.py")],
+                                     input=json.dumps({"session_id": "n"}), capture_output=True,
+                                     text=True, env=env).stdout
+        self.assertIn("allow Clawd Companion in System Settings", run())
+        self._status("allowed")
+        self.assertNotIn("System Settings", run())
+
+    def test_hook_records_where_only_with_menu_bar_on(self):
+        def run(env_extra):
+            env = dict(os.environ, CLAWD_HOME=self.home, **env_extra)
+            subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "hook.py"), "PermissionRequest"],
+                           input=json.dumps({"session_id": "h1", "cwd": self.home}),
+                           capture_output=True, text=True, env=env)
+        run({})
+        self.assertFalse(os.path.exists(self.common.where_path("h1")))
+        run({"CLAUDE_PLUGIN_OPTION_MENU_BAR": "true"})
+        expected = sys.platform == "darwin"
+        self.assertEqual(os.path.exists(self.common.where_path("h1")), expected)
+
+    def test_swift_validates_where_fields(self):
+        with open(os.path.join(ROOT, "companion", "menubar", "ClawdBar.swift")) as f:
+            src = f.read()
+        self.assertIn('"^/dev/ttys[0-9]{1,4}$"', src)
+        self.assertIn('"^[A-Za-z0-9][A-Za-z0-9.-]{0,127}$"', src)
+        with open(os.path.join(ROOT, "scripts", "menubar.py")) as f:
+            self.assertIn("NSAppleEventsUsageDescription", f.read())
+
+
 class TestStatusLineProcess(Base):
     def run_sl(self, payload, env_extra=None):
         env = dict(os.environ)

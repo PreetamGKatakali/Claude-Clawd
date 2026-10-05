@@ -75,7 +75,7 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
 
     var item: NSStatusItem!
     var snap: [String: Any]? = nil
-    var lastState: String? = nil
+    var notified = Set<String>()
     var tick = 0
     var serverProc: Process? = nil
     var lastServerTry = Date.distantPast
@@ -93,7 +93,9 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
         if canNotify {
             let c = UNUserNotificationCenter.current()
             c.delegate = self
-            c.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+            c.requestAuthorization(options: [.alert, .sound]) { granted, err in
+                self.noteStatus(err.map { "request failed: \($0.localizedDescription)" })
+            }
         }
         Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.step() }
         poll()
@@ -103,6 +105,31 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
     func applicationWillTerminate(_ n: Notification) {
         serverProc?.terminate()  // only a server this app started
         try? FileManager.default.removeItem(atPath: base + "/menubar.pid")
+    }
+
+    /// Notification permission and which path the last alert took, in
+    /// menubar-status.json, so `menubar.py status` can say why a click did nothing.
+    var notifyAuth = "unknown"
+    var lastAlert = "none"
+
+    func noteStatus(_ extra: String? = nil) {
+        guard canNotify else { return writeStatus(extra) }
+        UNUserNotificationCenter.current().getNotificationSettings { s in
+            let names: [UNAuthorizationStatus: String] = [.notDetermined: "not asked yet", .denied: "denied",
+                                                         .authorized: "allowed", .provisional: "provisional"]
+            DispatchQueue.main.async {
+                self.notifyAuth = names[s.authorizationStatus] ?? "other"
+                self.writeStatus(extra)
+            }
+        }
+    }
+
+    func writeStatus(_ extra: String?) {
+        var o: [String: Any] = ["notifications": notifyAuth, "last_alert": lastAlert]
+        if let e = extra { o["error"] = e }
+        if let d = try? JSONSerialization.data(withJSONObject: o) {
+            try? d.write(to: URL(fileURLWithPath: base + "/menubar-status.json"), options: .atomic)
+        }
     }
 
     func writePid() {
@@ -117,6 +144,7 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
             if !enabled() { NSApp.terminate(nil); return }
             poll()
         }
+        if tick % 20 == 1 { noteStatus() }  // every 10 s: you may have just allowed notifications
         redraw()
     }
 
@@ -175,10 +203,100 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
         return st
     }
 
+    /// Sessions waiting for approval, oldest first, from the server snapshot.
+    func waiting() -> [(sid: String, project: String)] {
+        guard let list = snap?["waiting"] as? [[String: Any]] else { return [] }
+        return list.compactMap { w in
+            guard let sid = w["session"] as? String else { return nil }
+            return (sid, (w["project"] as? String) ?? "")
+        }
+    }
+
+    /// One notification per session as it starts waiting; its banner is
+    /// removed once you have answered.
     func changed() {
-        let st = state()
-        if st == "confirm" && lastState != "confirm" { notifyApproval() }
-        lastState = st
+        if snap == nil { return }  // server down: keep what we know
+        let now = waiting()
+        let ids = Set(now.map { $0.sid })
+        for w in now where !notified.contains(w.sid) { notifyApproval(w.sid, w.project) }
+        let gone = notified.subtracting(ids)
+        if canNotify && !gone.isEmpty {
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: gone.map { "approve-" + $0 })
+        }
+        notified = ids
+    }
+
+    // MARK: which session, and where it runs
+
+    /// Same rule as clawd_common.safe_name, so the file names match.
+    func safeName(_ v: String) -> String {
+        let out = String(v.map { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" ? $0 : "-" }.prefix(120))
+        return out.isEmpty ? "unknown" : out
+    }
+
+    struct Where { var app: String?; var editor: Bool; var tty: String?; var root: String? }
+
+    /// where/<session>.json, written by the hooks. Every field is re-checked here.
+    func whereOf(_ sid: String?) -> Where? {
+        guard let sid = sid,
+              let d = FileManager.default.contents(atPath: base + "/where/" + safeName(sid) + ".json"),
+              let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return nil }
+        let app = (o["app"] as? String).flatMap { $0.range(of: "^[A-Za-z0-9][A-Za-z0-9.-]{0,127}$", options: .regularExpression) != nil ? $0 : nil }
+        let tty = (o["tty"] as? String).flatMap { $0.range(of: "^/dev/ttys[0-9]{1,4}$", options: .regularExpression) != nil ? $0 : nil }
+        var isDir: ObjCBool = false
+        let root = (o["root"] as? String).flatMap {
+            $0.hasPrefix("/") && FileManager.default.fileExists(atPath: $0, isDirectory: &isDir) && isDir.boolValue ? $0 : nil
+        }
+        return Where(app: app, editor: (o["editor"] as? Bool) ?? false, tty: tty, root: root)
+    }
+
+    func appName(_ bundle: String?) -> String {
+        guard let b = bundle, let u = NSWorkspace.shared.urlForApplication(withBundleIdentifier: b) else { return terminalName() }
+        return FileManager.default.displayName(atPath: u.path).replacingOccurrences(of: ".app", with: "")
+    }
+
+    /// Go to the session: the exact Terminal tab, the editor window that has
+    /// the project open, or at least the app it runs in.
+    func goTo(_ sid: String?) {
+        guard let w = whereOf(sid), let bundle = w.app,
+              let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) else {
+            return openTerminal()
+        }
+        if bundle == "com.apple.Terminal", let tty = w.tty, selectTerminalTab(tty) { return }
+        if w.editor, let root = w.root {
+            // VS Code, Cursor and other forks focus the window that already
+            // has this folder open.
+            NSWorkspace.shared.open([URL(fileURLWithPath: root, isDirectory: true)], withApplicationAt: appURL,
+                                    configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
+            return
+        }
+        NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    /// Terminal.app scripting: select the tab whose tty matches and raise its
+    /// window. macOS asks once for permission to control Terminal.
+    func selectTerminalTab(_ tty: String) -> Bool {
+        let src = """
+        tell application id "com.apple.Terminal"
+          repeat with w in windows
+            repeat with t in tabs of w
+              if tty of t is "\(tty)" then
+                try
+                  set miniaturized of w to false
+                end try
+                set selected of t to true
+                set index of w to 1
+                activate
+                return true
+              end if
+            end repeat
+          end repeat
+        end tell
+        return false
+        """
+        var err: NSDictionary?
+        let r = NSAppleScript(source: src)?.executeAndReturnError(&err)
+        return err == nil && (r?.booleanValue ?? false)
     }
 
     // MARK: drawing
@@ -232,8 +350,22 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
         let open = action("Open Clawd window", #selector(openWindow))
         open.isEnabled = port() != nil
         m.addItem(open)
-        m.addItem(action("Bring \(terminalName()) to front", #selector(openTerminal)))
+        let list = waiting()
+        if list.isEmpty {
+            m.addItem(action("Bring \(terminalName()) to front", #selector(openTerminal)))
+        } else {
+            m.addItem(disabled(list.count == 1 ? "Waiting for your approval" : "\(list.count) sessions waiting for your approval"))
+            for w in list {
+                let name = w.project.isEmpty ? "session" : w.project
+                let item = action("Go to \(name) · \(appName(whereOf(w.sid)?.app))", #selector(goToWaiting(_:)))
+                item.representedObject = w.sid
+                m.addItem(item)
+            }
+        }
         m.addItem(action("Send a test notification", #selector(testNote)))
+        if notifyAuth != "allowed" && notifyAuth != "provisional" {
+            m.addItem(action("Turn on notifications for Clawd…", #selector(openNotificationSettings)))
+        }
         m.addItem(.separator())
         m.addItem(action("Hide until next session", #selector(hide)))
         return m
@@ -260,6 +392,14 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
         NSWorkspace.shared.openApplication(at: u, configuration: NSWorkspace.OpenConfiguration())
     }
 
+    @objc func goToWaiting(_ sender: NSMenuItem) { goTo(sender.representedObject as? String) }
+
+    @objc func openNotificationSettings() {
+        if let u = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
+            NSWorkspace.shared.open(u)
+        }
+    }
+
     @objc func openWindow() {
         guard let p = port(), let u = URL(string: "http://127.0.0.1:\(p)/") else { return }
         NSWorkspace.shared.open(u)
@@ -273,26 +413,38 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
 
     // MARK: notifications
 
-    func notifyApproval() {
-        // You are already looking at the terminal: the prompt is right there.
-        if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == terminal { return }
-        let project = (snap?["project"] as? String).map { " in " + $0 } ?? ""
-        post("Clawd needs your approval", "Claude Code is waiting for you\(project). Click to switch to \(terminalName()).")
+    func notifyApproval(_ sid: String, _ project: String) {
+        // Always notify: with several windows or tabs, the app being in front
+        // says nothing about whether you can see this session's prompt.
+        let place = project.isEmpty ? "" : " in " + project
+        post("Clawd needs your approval",
+             "Claude Code is waiting for you\(place). Click to go to it in \(appName(whereOf(sid)?.app)).",
+             session: sid)
     }
 
-    func post(_ title: String, _ body: String) {
-        guard canNotify else { return fallback(title, body) }
+    func post(_ title: String, _ body: String, session: String? = nil) {
+        // The fallback banner belongs to Script Editor, and clicking it opens
+        // Script Editor, so it points at the menu instead.
+        let plain = session == nil ? body : "Claude Code is waiting for you. Click Clawd in the menu bar to go to it."
+        guard canNotify else { return fallback(title, plain) }
         let c = UNUserNotificationCenter.current()
         c.getNotificationSettings { s in
             guard s.authorizationStatus == .authorized || s.authorizationStatus == .provisional else {
-                return self.fallback(title, body)
+                DispatchQueue.main.async { self.lastAlert = "fallback (notifications not allowed)"; self.noteStatus() }
+                return self.fallback(title, plain)
             }
+            DispatchQueue.main.async { self.lastAlert = "native"; self.noteStatus() }
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = body
             content.sound = .default
-            c.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)) { err in
-                if err != nil { self.fallback(title, body) }
+            if let sid = session { content.userInfo = ["session": sid] }
+            let id = session.map { "approve-" + $0 } ?? UUID().uuidString
+            c.add(UNNotificationRequest(identifier: id, content: content, trigger: nil)) { err in
+                if let err = err {
+                    DispatchQueue.main.async { self.lastAlert = "fallback (add failed)"; self.noteStatus(err.localizedDescription) }
+                    self.fallback(title, plain)
+                }
             }
         }
     }
@@ -314,7 +466,8 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
 
     func userNotificationCenter(_ c: UNUserNotificationCenter, didReceive r: UNNotificationResponse,
                                 withCompletionHandler done: @escaping () -> Void) {
-        DispatchQueue.main.async { self.openTerminal() }
+        let sid = r.notification.request.content.userInfo["session"] as? String
+        DispatchQueue.main.async { sid == nil ? self.openTerminal() : self.goTo(sid) }
         done()
     }
 }

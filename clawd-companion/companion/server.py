@@ -163,6 +163,9 @@ def snapshot():
         # Also the user's choice: Clawd's body colour, one of a fixed list,
         # for the model of the session shown (the status line records it).
         "color": common.body_hex(cfg, common.session_model(merged.get("session_id"))),
+        # For the macOS menu bar: one entry per session waiting for approval,
+        # so each gets its own notification. Session id and folder name only.
+        "waiting": common.waiting_sessions(records),
         "updated": merged.get("updated", at),
         "now": at,
         "sound_enabled": bool(cfg.get("sound_enabled")),

@@ -404,6 +404,8 @@ def main():
         PALETTE["B"] = common.body_rgb(cfg, family)
         common.remember_model(payload.get("session_id"), family, at)
         notice = common.RESTART_TEXT if common.restart_pending(cfg) else None
+        if notice is None and common.notifications_denied(cfg):
+            notice = common.NOTIFY_OFF_TEXT
         welcome = common.welcoming(rec, at)
 
         # Hydration is global. The server owns the timer when it is up; this

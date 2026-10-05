@@ -39,6 +39,18 @@ A second one: Clawd's **colour**, as a `#RRGGBB` value from the fixed list
 behind the `clawd_color` option. Anything not on that list falls back to
 `classic`.
 
+A third one, for the macOS menu bar: **`waiting`**, one entry per session that
+is waiting for your approval, holding its session id and cleaned folder name,
+so each session gets its own notification.
+
+The menu bar also needs to know where each session runs, so a click can go
+back to it. That is kept out of the payload: on macOS, with `menu_bar` on, the
+hooks write `where/<session>.json` holding the app Claude Code runs in, the
+tab's terminal device (`/dev/ttysNNN`) and the project folder's **full path**
+(the git root above it). Only the menu bar app reads these files; the server
+never does. They are deleted when the session ends, and any left behind are
+removed after two days.
+
 ## Install
 
 ### From GitHub
@@ -178,12 +190,38 @@ prints why). The app:
 - reads the same allowlisted `/state` snapshot as the window, from 127.0.0.1
   only, and starts the companion server if it is not running (and stops that
   server again when it quits);
-- posts "Clawd needs your approval" when the state turns to needs-your-OK,
-  unless the app Claude Code runs in is already in front. Clicking the
-  notification brings that app forward. You still approve in the terminal;
-- has a menu with the state, project, "Open Clawd window", "Bring <app> to
-  front", "Send a test notification" and "Hide until next session";
+- posts "Clawd needs your approval" for **each** session as it starts waiting,
+  and removes that banner once you have answered. Clicking it goes back to
+  that session (below). You still approve in the terminal;
+- has a menu with the state, project, every waiting session ("Go to
+  claude-clawd · Cursor"), "Open Clawd window", "Send a test notification" and
+  "Hide until next session";
 - quits by itself once `menu_bar` is off.
+
+**Where a click takes you.**
+
+| Claude Code runs in | A click goes to |
+|---|---|
+| Terminal.app | The exact tab, matched by its terminal device. macOS asks once to let Clawd Companion control Terminal |
+| Cursor, VS Code and other VS Code forks (`TERM_PROGRAM=vscode`) | The window that has the project's git root open, by opening that folder in the same app. A terminal panel inside the window cannot be selected from outside |
+| Anything else | The app, brought to the front |
+
+Two windows with the same folder open cannot be told apart, and if the editor
+has a parent folder open rather than the git root, opening the root may start
+a new window.
+
+**Notifications need your OK once.** The first time the app starts, macOS asks
+whether "Clawd Companion" may send notifications: click **Allow**. If that was
+missed or declined, macOS remembers "denied" and every alert falls back to an
+AppleScript banner that belongs to Script Editor, so clicking it opens Script
+Editor. While notifications are denied, the status line's second row says
+"Clawd can't notify you · allow Clawd Companion in System Settings →
+Notifications", and the Clawd menu has "Turn on notifications for Clawd…".
+`python3 scripts/menubar.py status` shows the permission and which kind of
+banner was used last.
+
+**In auto mode there is nothing to approve.** Sessions that accept edits on
+their own never raise a permission prompt, so no approval alert appears.
 
 `/plugin` shows the option on every platform: the manifest has no field to hide
 an option per OS (the `userConfig` keys are strict), so the title says "macOS
@@ -191,8 +229,8 @@ only" and the code checks `sys.platform` instead.
 
 **Your name.** Setup asks what Clawd should call you and saves it in
 `config.json` (change it with `install.py name --set NAME` or `--clear`). The
-`display_name` option overrides it. With a name, the hello reads "hey preetam,
-welcome!" and the water reminder "Time to Drink water, preetam!"; without one,
+`display_name` option overrides it. With a name, the hello reads "hey <name>,
+welcome!" and the water reminder "Time to Drink water, <name>!"; without one,
 the text stays generic ("Time to Drink water!"). The line under the water
 headline is one of the short tips from `companion/web/topics.json`.
 
@@ -372,8 +410,13 @@ Verified against the docs at `code.claude.com/docs` and against Claude Code
 | The status line input carries `model.id` and `model.display_name`, and they follow `/model` | **Verified** | Live run on 2026-10-01: `/model haiku`, `/model opus` and `/model sonnet` in a real session; the script received `claude-haiku-4-5-20251001`, `claude-opus-5-5` and `claude-sonnet-5-5` within about a second of each. Ids from Bedrock, Vertex or custom aliases were not tested; one without `opus`, `sonnet` or `haiku` in it gets the Sonnet phrases |
 | `/plugin` saves options in `settings.json` under `pluginConfigs` → `clawd-companion@<marketplace>` → `options` | **Verified** | Seen in a live settings file on 2026-10-02 after saving `clawd_color` in `/plugin`. The plugin manifest reference names `pluginConfigs` in `settings.json` as where non-sensitive values go; the exact nesting is from the live file |
 | A `userConfig` option cannot be limited to one OS | **Verified (docs)** | The manifest reference lists every option field (`type`, `title`, `description`, `required`, `default`, `options`, `multiple`, `sensitive`, `min`/`max`) and rejects unknown ones |
-| macOS shows native notifications from the ad-hoc-signed menu bar app | **UNVERIFIED** | It asks permission on first launch. If macOS refuses, it falls back to an AppleScript notification, which works but does not switch to the terminal on click |
-| `__CFBundleIdentifier` in the hook environment names the app Claude Code runs in | **UNVERIFIED** | Seen live as Cursor's id in this session; not documented. Without it, "Bring to front" uses Terminal |
+| A real permission prompt reaches the hook, the menu bar app and a native macOS notification | **Verified** | 2026-10-05: interactive `claude --permission-mode default` sessions asked to write a file; the state turned to needs-your-OK within 2 s, the ad-hoc-signed app posted a native banner (after notifications were allowed in System Settings), and it cleared after approval |
+| Clicking the banner focuses the Cursor window with the project open | **Verified** | Same day, by hand: the click brought the `claude-clawd` Cursor window forward |
+| Two waiting sessions get one banner each | **Verified** | A Terminal.app session and a Cursor session waiting at once: `waiting` held both and two banners appeared |
+| Clicking selects the exact Terminal.app tab | **UNVERIFIED** | The tab's terminal device is recorded correctly; the jump itself has not been confirmed by eye yet |
+| VS Code behaves like Cursor | **UNVERIFIED** | VS Code was not installed on the test machine. It sets the same `TERM_PROGRAM=vscode` and takes the same folder-open path |
+| `__CFBundleIdentifier` in the hook environment names the app Claude Code runs in | **Verified (live, undocumented)** | Seen as Cursor's id from Cursor and `com.apple.Terminal` from Terminal.app. Without it, the click falls back to Terminal |
+| `CLAUDE_PLUGIN_OPTION_*` set by hand in the environment is ignored | **Verified** | Claude Code replaces it with the saved option value, so options change only through `/plugin` |
 | A saved option reaches the hooks only after a restart | **UNVERIFIED** | Not tested. A `/reload-plugins` may already be enough, in which case the notice is overcautious |
 | Exec-form hooks (`args` present) run with no shell | **Verified (docs)** | Hooks reference, "Exec form and shell form" |
 | A plugin's `settings.json` cannot set `statusLine` | **Verified (docs)** | Only `agent` and `subagentStatusLine` take effect |
